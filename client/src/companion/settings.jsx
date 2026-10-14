@@ -5,7 +5,7 @@
  * 「手动推送 / 精简会话」「重置数据」这类很少用的工具还在原来的 Companion 页面里，之后再搬。
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cx } from "./api.js";
 import { Field } from "./editors.jsx";
 
@@ -68,6 +68,116 @@ function StyleBlock({ title, value = {}, onChange, fonts }) {
   );
 }
 
+
+function OrganizerCard({ s, up, data, save, ctx }) {
+  const { load, toast } = ctx;
+  const org = s.organizer || {};
+  const st = data.organizer;
+  const [roles, setRoles] = useState(null);
+  const [rolesErr, setRolesErr] = useState("");
+  const [busy, setBusy] = useState("");
+  const [days, setDays] = useState(7);
+
+  async function fetchRoles() {
+    setRolesErr("");
+    try {
+      setRoles((await cx("/organizer/roles")).roles);
+    } catch (e) {
+      setRolesErr(e.message);
+    }
+  }
+  useEffect(() => {
+    if (data.settings.bridge?.url && data.settings.bridge?.key) fetchRoles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function run(sinceDays) {
+    setBusy(sinceDays ? "back" : "now");
+    try {
+      await save(true); // 先把当前设置存上，再整理
+      const r = await cx("/organizer/run", { method: "POST", body: { sinceDays } });
+      await load();
+      toast(`整理完成：新日记 ${r.diaryEntries}，新活动 ${r.activities}，同步日记 ${r.diariesSynced}，重复跳过 ${r.duplicates}`);
+    } catch (e) {
+      await load();
+      toast(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const c = st?.counts;
+  return (
+    <div className="card">
+      <h3>整理（从 Uranus 读记忆 / 备忘录 / 日记）</h3>
+      <p className="faint" style={{ marginTop: 0 }}>
+        只读取「今天新增或改过」的记忆和备忘录，以及最近的日记；Uranus 里的日记原文原样同步（评论不会丢）；
+        明确的未来计划会被写成角色的活动，日期不明的留在「未排期」。整理用的是下面选的模型，和角色聊天用的模型无关。
+      </p>
+      <label className="check">
+        <input type="checkbox" checked={!!org.enabled} onChange={(e) => up(["organizer", "enabled"], e.target.checked)} /> 自动整理（每隔一段时间一次）
+      </label>
+      <Field label="读取哪个 Uranus 角色">
+        <select value={org.roleKey || ""} onChange={(e) => up(["organizer", "roleKey"], e.target.value)}>
+          <option value="">未选择</option>
+          {(roles || []).map((r) => (
+            <option key={r.key} value={r.key}>
+              {r.name || r.key}
+            </option>
+          ))}
+          {org.roleKey && !(roles || []).some((r) => r.key === org.roleKey) && <option value={org.roleKey}>{org.roleKey}</option>}
+        </select>
+      </Field>
+      {rolesErr && <p className="err meta">{rolesErr}</p>}
+      <button type="button" className="link" onClick={fetchRoles}>
+        重新读取角色列表
+      </button>
+      <Field label="整理用的模型（不选就用 Companion 的模型）">
+        <select value={org.profileId || ""} onChange={(e) => up(["organizer", "profileId"], e.target.value)}>
+          <option value="">跟随 Companion 的模型</option>
+          {(s.modelProfiles || []).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name || p.model || "未命名"}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="自动整理间隔（分钟，至少 10）">
+        <input type="number" min="10" value={org.intervalMinutes ?? 60} onChange={(e) => up(["organizer", "intervalMinutes"], Number(e.target.value))} />
+      </Field>
+      <div className="row" style={{ flexWrap: "wrap", marginTop: 4 }}>
+        <button type="button" className="pill solid" disabled={!!busy || !org.roleKey} onClick={() => run(0)}>
+          {busy === "now" ? "整理中…" : "立即整理"}
+        </button>
+        <span className="meta">补最近</span>
+        <input type="number" min="1" max="60" value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ width: 70 }} />
+        <span className="meta">天</span>
+        <button type="button" className="pill" disabled={!!busy || !org.roleKey} onClick={() => run(Math.max(1, Math.min(60, days || 7)))}>
+          {busy === "back" ? "补录中…" : "补录"}
+        </button>
+      </div>
+      <p className="meta" style={{ marginBottom: 0 }}>
+        第一次整理只会记下已有的备忘录，不会把整份旧清单当成新计划；想把旧内容也整理，用「补录」。
+      </p>
+      {st && (
+        <div className="profile" style={{ marginTop: 10 }}>
+          <div>
+            上次：{new Date(st.lastRunAt).toLocaleString("zh-CN")} · {st.ok ? "成功" : <span className="err">失败</span>}
+            {st.backlog ? " · 还有积压，10 分钟后继续" : ""}
+          </div>
+          {st.error && <div className="err meta">{st.error}</div>}
+          {c && (
+            <div className="meta">
+              记忆 {c.memories} · 备忘录新增行 {c.memoLines} · 同步日记 {c.diariesSynced} · 新短日记 {c.diaryEntries} · 新活动 {c.activities} · 跳过 {c.skipped} · 重复 {c.duplicates}
+            </div>
+          )}
+          {!st.ok && st.nextDue > Date.now() && <div className="meta">下次自动重试：{new Date(st.nextDue).toLocaleTimeString("zh-CN")}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPage({ ctx }) {
   const { data, load, toast } = ctx;
   const orig = data.settings;
@@ -82,7 +192,7 @@ export function SettingsPage({ ctx }) {
       return n;
     });
 
-  async function save() {
+  async function save(quiet = false) {
     setBusy(true);
     try {
       const body = {
@@ -92,9 +202,10 @@ export function SettingsPage({ ctx }) {
       };
       await cx("/settings", { method: "PUT", body });
       await load();
-      toast("已保存");
+      if (quiet !== true) toast("已保存");
     } catch (e) {
       toast(e.message);
+      if (quiet === true) throw e;
     } finally {
       setBusy(false);
     }
@@ -147,6 +258,8 @@ export function SettingsPage({ ctx }) {
           <input value={Array.isArray(s.reactionLibrary) ? s.reactionLibrary.join(" ") : s.reactionLibrary} onChange={(e) => up(["reactionLibrary"], e.target.value)} />
         </Field>
       </div>
+
+      <OrganizerCard s={s} up={up} data={data} save={save} ctx={ctx} />
 
       <div className="card">
         <h3>模型</h3>
@@ -304,8 +417,9 @@ export function SettingsPage({ ctx }) {
         </Field>
       </div>
 
+      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b4 · 整理卡片在「基本」下面</div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
-        <button type="button" className="pill solid" disabled={busy} onClick={save}>
+        <button type="button" className="pill solid" disabled={busy} onClick={() => save()}>
           {busy ? "保存中…" : "保存设置"}
         </button>
       </div>

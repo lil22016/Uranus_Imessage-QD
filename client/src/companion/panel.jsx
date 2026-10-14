@@ -404,6 +404,7 @@ function ActivityRow({ item, ctx, nested }) {
             {item.status === "cancelled" && <span className="tag">已取消</span>}
           </div>
           {item.desc && <div className="adesc">{item.desc}</div>}
+          {!mine && item.statusNote && item.status !== "planned" && <div className="adesc">{item.statusNote}</div>}
           <Images list={item.images} />
           {item.status === "done" && (item.doneText || item.statusImages?.length > 0) && (
             <div className="done-note">
@@ -506,6 +507,9 @@ function DayPage({ ctx }) {
           <div className="acts">
             <button className="pill" disabled={!!busy} onClick={() => agent("write_schedule")}>
               {busy === "write_schedule" ? "写着…" : "让 TA 写"}
+            </button>
+            <button className="pill" disabled={!!busy} onClick={() => agent("review_status")}>
+              {busy === "review_status" ? "复盘中…" : "让 TA 复盘进度"}
             </button>
           </div>
         </div>
