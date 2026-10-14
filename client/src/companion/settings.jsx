@@ -69,6 +69,165 @@ function StyleBlock({ title, value = {}, onChange, fonts }) {
 }
 
 
+function GardenCard({ ctx }) {
+  const { toast } = ctx;
+  const [info, setInfo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  async function load() {
+    try {
+      setInfo(await cx("/garden/info"));
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const link = info?.token ? `${info.url}/garden/feed?t=${info.token}` : "";
+  async function make() {
+    if (info?.token && !window.confirm("重新生成后，旧的连接链接立刻失效，Garden 里要重新粘贴。继续？")) return;
+    setBusy(true);
+    try {
+      setInfo(await cx("/garden/token", { method: "POST" }));
+      toast("已生成");
+    } catch (e) {
+      toast(e.message);
+    }
+    setBusy(false);
+  }
+  async function revoke() {
+    if (!window.confirm("关闭后 Garden 不再能读取 Loki 的活动。继续？")) return;
+    setBusy(true);
+    try {
+      await cx("/garden/token", { method: "DELETE" });
+      await load();
+    } catch (e) {
+      toast(e.message);
+    }
+    setBusy(false);
+  }
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast("已复制");
+    } catch {
+      toast("复制失败，请手动选中复制");
+    }
+  }
+  return (
+    <div className="card">
+      <h3>DDL Garden 连接（只读）</h3>
+      <p className="faint" style={{ marginTop: 0 }}>
+        Garden 通过这条链接读取 Loki 有具体日期的活动（只读，不能改任何东西；你自己的任务不会被读取）。
+        在 Garden 的 ☰ 侧栏 → Loki Appearance → Companion 链接里粘贴一次即可。链接等于一把钥匙，别发给别人。
+      </p>
+      {link ? (
+        <>
+          <Field label="连接链接">
+            <input readOnly value={link} onFocus={(e) => e.target.select()} />
+          </Field>
+          <div className="row">
+            <button type="button" className="pill solid" onClick={copy}>
+              复制链接
+            </button>
+            <button type="button" className="pill" disabled={busy} onClick={make}>
+              重新生成
+            </button>
+            <button type="button" className="pill danger" disabled={busy} onClick={revoke}>
+              关闭
+            </button>
+          </div>
+        </>
+      ) : (
+        <button type="button" className="pill solid" disabled={busy} onClick={make}>
+          {busy ? "生成中…" : "生成连接链接"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function McpCard({ ctx }) {
+  const { toast } = ctx;
+  const [info, setInfo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  async function load() {
+    try {
+      setInfo(await cx("/mcp/info"));
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const link = info?.token ? `${info.url}/mcp?t=${info.token}` : "";
+  async function make() {
+    if (info?.token && !window.confirm("重新生成后，Uranus 里填的旧地址立刻失效，需要换成新的。继续？")) return;
+    setBusy(true);
+    try {
+      setInfo(await cx("/mcp/token", { method: "POST" }));
+      toast("已生成");
+    } catch (e) {
+      toast(e.message);
+    }
+    setBusy(false);
+  }
+  async function revoke() {
+    if (!window.confirm("关闭后 Uranus 里的角色不能再读写 Companion。继续？")) return;
+    setBusy(true);
+    try {
+      await cx("/mcp/token", { method: "DELETE" });
+      await load();
+    } catch (e) {
+      toast(e.message);
+    }
+    setBusy(false);
+  }
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast("已复制");
+    } catch {
+      toast("复制失败，请手动选中复制");
+    }
+  }
+  return (
+    <div className="card">
+      <h3>让 Uranus 里的 Loki 读写 Companion（MCP）</h3>
+      <p className="faint" style={{ marginTop: 0 }}>
+        聊天时 Loki 可以：查看你的日程和 DDL Garden（只读）、查看/新增自己的活动、把自己的活动标成完成/失败/改计划/取消。
+        改你的任何东西都做不到；他改的内容不会再推回 Uranus，不会形成循环。
+        在 Uranus 里：角色 → MCP 工具 → 添加服务器，传输选 http，地址粘贴下面这条，然后给 Loki 勾选。链接等于钥匙，别发给别人。
+      </p>
+      {link ? (
+        <>
+          <Field label="MCP 地址">
+            <input readOnly value={link} onFocus={(e) => e.target.select()} />
+          </Field>
+          <div className="row">
+            <button type="button" className="pill solid" onClick={copy}>
+              复制地址
+            </button>
+            <button type="button" className="pill" disabled={busy} onClick={make}>
+              重新生成
+            </button>
+            <button type="button" className="pill danger" disabled={busy} onClick={revoke}>
+              关闭
+            </button>
+          </div>
+        </>
+      ) : (
+        <button type="button" className="pill solid" disabled={busy} onClick={make}>
+          {busy ? "生成中…" : "生成 MCP 地址"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function OrganizerCard({ s, up, data, save, ctx }) {
   const { load, toast } = ctx;
   const org = s.organizer || {};
@@ -117,6 +276,9 @@ function OrganizerCard({ s, up, data, save, ctx }) {
       <label className="check">
         <input type="checkbox" checked={!!org.enabled} onChange={(e) => up(["organizer", "enabled"], e.target.checked)} /> 自动整理（每隔一段时间一次）
       </label>
+      <Field label="整理出的日记/活动用什么语言（留空 = 保持原文语言）">
+        <input value={org.language || ""} placeholder="English" onChange={(e) => up(["organizer", "language"], e.target.value)} />
+      </Field>
       <Field label="读取哪个 Uranus 角色">
         <select value={org.roleKey || ""} onChange={(e) => up(["organizer", "roleKey"], e.target.value)}>
           <option value="">未选择</option>
@@ -261,6 +423,10 @@ export function SettingsPage({ ctx }) {
 
       <OrganizerCard s={s} up={up} data={data} save={save} ctx={ctx} />
 
+      <GardenCard ctx={ctx} />
+
+      <McpCard ctx={ctx} />
+
       <div className="card">
         <h3>模型</h3>
         <Field label="Companion 用的模型">
@@ -323,6 +489,9 @@ export function SettingsPage({ ctx }) {
         </Field>
         <Field label="额外指令">
           <textarea value={s.agent?.instructions || ""} onChange={(e) => up(["agent", "instructions"], e.target.value)} />
+        </Field>
+        <Field label="输出语言（留空 = 不强制；想要英文日记就填 English）">
+          <input value={s.agent?.language || ""} placeholder="English" onChange={(e) => up(["agent", "language"], e.target.value)} />
         </Field>
       </div>
 
@@ -417,7 +586,7 @@ export function SettingsPage({ ctx }) {
         </Field>
       </div>
 
-      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b4 · 整理卡片在「基本」下面</div>
+      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b5 · 整理卡片在「基本」下面</div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
         <button type="button" className="pill solid" disabled={busy} onClick={() => save()}>
           {busy ? "保存中…" : "保存设置"}
