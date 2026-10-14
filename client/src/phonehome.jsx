@@ -501,8 +501,10 @@ const CSS = `
 `;
 
 const APP_CSS = `
-@keyframes phAppIn{from{opacity:0;transform:scale(.965) translateY(10px)}to{opacity:1;transform:none}}
-.ph-appin{animation:phAppIn .24s ease both}
+/* 只用透明度做进场：不能带 transform / filter —— 它们会让里面所有 position:fixed 的东西（状态菜单、弹窗、彩带）
+   改成相对这块内容区定位，菜单就会跳到页面顶上 */
+@keyframes phAppIn{from{opacity:0}to{opacity:1}}
+.ph-appin{animation:phAppIn .2s ease backwards}
 .ph-appbar{padding-top:max(8px,env(safe-area-inset-top));background:rgba(255,255,255,.82);backdrop-filter:blur(16px) saturate(160%);-webkit-backdrop-filter:blur(16px) saturate(160%)}
 .ph-homebar{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:100%;height:calc(24px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);border:0;background:transparent;cursor:pointer}
 .ph-homebar i{display:block;width:134px;height:5px;border-radius:3px;background:rgba(24,24,27,.82)}
