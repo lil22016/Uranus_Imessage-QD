@@ -686,6 +686,15 @@ export function AppShell() {
                   {tab === "memories" && <MemoriesPanel onGoto={goto} />}
                   {tab === "reminders" && <RemindersPanel />}
                   {tab === "theater" && <TheaterPanel />}
+                  {tab === "companion" && (
+                    <section data-anchor="companion-app" className="min-w-0 overflow-hidden rounded-xl border border-line bg-surface">
+                      <div className="flex items-center justify-between gap-3 px-4 py-3">
+                        <span className="text-sm text-ink-muted">Companion · independent workspace</span>
+                        <a href="https://rl7-uranus-companion.kugaiwo.workers.dev/" target="_blank" rel="noopener noreferrer" className="text-sm underline">Open separately ↗</a>
+                      </div>
+                      <iframe title="RL7 Companion" src="https://rl7-uranus-companion.kugaiwo.workers.dev/" loading="lazy" referrerPolicy="no-referrer" style={{ width: "100%", height: "min(78vh, 900px)", minHeight: 560, border: 0, background: "#111" }} />
+                    </section>
+                  )}
                   {tab === "phone" && <PhonePanel />}
                   {tab === "instagram" && <InstagramPanel onGoto={goto} />}
                   {tab === "chat" && (

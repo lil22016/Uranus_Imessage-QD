@@ -237,6 +237,14 @@ export const NAV = [
       }),
   },
   {
+    id: "companion",
+    label: "Companion",
+    icon: BookOpen,
+    group: "角色",
+    desc: "Companion · Calendar, Diary and Activity. Independent storage remains on the existing Companion Worker.",
+    anchors: [{ id: "companion-app", label: "Shared Space" }],
+  },
+  {
     id: "phone",
     label: "查手机",
     icon: SmartphoneNfc,
