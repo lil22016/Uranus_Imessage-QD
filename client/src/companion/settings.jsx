@@ -19,7 +19,7 @@ function FontSelect({ value, onChange, fonts }) {
         <option value="">默认字体</option>
         {fonts.map((f) => (
           <option key={f.id} value={`font:${f.id}`}>
-            {f.name}（已上传）
+            {f.name}（{f.url ? "链接" : "已上传"}）
           </option>
         ))}
         <option value="css:">按字体名称…</option>
@@ -35,15 +35,13 @@ function StyleBlock({ title, value = {}, onChange, fonts }) {
     <div className="profile">
       <b>{title}</b>
       <div className="two" style={{ marginTop: 8 }}>
-        <Field label="标题字体">
-          <FontSelect value={value.titleFont} onChange={(v) => set("titleFont", v)} fonts={fonts} />
+        <Field label="字体（标题和描述共用）">
+          <FontSelect value={value.font || value.titleFont || value.descFont} onChange={(v) => onChange({ ...value, font: v, titleFont: "", descFont: "" })} fonts={fonts} />
         </Field>
-        <Field label="描述字体">
-          <FontSelect value={value.descFont} onChange={(v) => set("descFont", v)} fonts={fonts} />
-        </Field>
+        <div />
         <Field label="标题颜色">
           <div className="row">
-            <input type="color" value={value.titleColor || "#18181b"} onChange={(e) => set("titleColor", e.target.value)} style={{ width: 52, padding: 2 }} />
+            <input type="color" value={value.titleColor || "#f5f3f1"} onChange={(e) => set("titleColor", e.target.value)} style={{ width: 52, padding: 2 }} />
             <button type="button" className="link" onClick={() => set("titleColor", "")}>
               还原
             </button>
@@ -51,7 +49,7 @@ function StyleBlock({ title, value = {}, onChange, fonts }) {
         </Field>
         <Field label="描述颜色">
           <div className="row">
-            <input type="color" value={value.descColor || "#787878"} onChange={(e) => set("descColor", e.target.value)} style={{ width: 52, padding: 2 }} />
+            <input type="color" value={value.descColor || "#bdb5b3"} onChange={(e) => set("descColor", e.target.value)} style={{ width: 52, padding: 2 }} />
             <button type="button" className="link" onClick={() => set("descColor", "")}>
               还原
             </button>
@@ -340,6 +338,40 @@ function OrganizerCard({ s, up, data, save, ctx }) {
   );
 }
 
+function FontLinkForm({ cx, load, toast }) {
+  const [url, setUrl] = useState("");
+  const [fam, setFam] = useState("");
+  const [busy, setBusy] = useState(false);
+  const isFile = /\.(woff2?|ttf|otf)(\?|#|$)/i.test(url.trim());
+  async function add() {
+    setBusy(true);
+    try {
+      await cx("/font/link", { method: "POST", body: { url: url.trim(), family: fam.trim(), name: fam.trim() } });
+      setUrl("");
+      setFam("");
+      await load();
+      toast("字体链接已添加");
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Field label="或者填字体链接（字体文件直链 .woff2/.ttf/.otf，或 Google Fonts 的 css 链接；不占 Companion 空间）">
+      <div className="gap" style={{ gap: 6 }}>
+        <input placeholder="https://…/MyFont.woff2  或  https://fonts.googleapis.com/css2?family=Lora" value={url} onChange={(e) => setUrl(e.target.value)} />
+        {url.trim() && !isFile && <input placeholder="字体名（Google Fonts 里写的名字，如 Lora）" value={fam} onChange={(e) => setFam(e.target.value)} />}
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button type="button" className="pill" disabled={busy || !url.trim()} onClick={add}>
+            {busy ? "添加中…" : "添加链接"}
+          </button>
+        </div>
+      </div>
+    </Field>
+  );
+}
+
 export function SettingsPage({ ctx }) {
   const { data, load, toast } = ctx;
   const orig = data.settings;
@@ -396,6 +428,9 @@ export function SettingsPage({ ctx }) {
     }
   }
 
+  const providers = (ctx.providers || []).filter((p) => !p.type || p.type === "custom" || p.type === "openai");
+  const pickedProvider = providers.find((p) => p.id === s.image?.uranusProviderId);
+  const imageModels = (pickedProvider?.models || []).filter((m) => m?.model).sort((a, b) => (b.category === "image") - (a.category === "image"));
   const profiles = s.modelProfiles || [];
   const setProfile = (i, k, v) => up(["modelProfiles"], profiles.map((p, j) => (j === i ? { ...p, [k]: v } : p)));
   const fonts = data.fonts || [];
@@ -538,17 +573,56 @@ export function SettingsPage({ ctx }) {
         <label className="check">
           <input type="checkbox" checked={!!s.image?.enabled} onChange={(e) => up(["image", "enabled"], e.target.checked)} /> 启用
         </label>
-        <Field label="Base URL">
-          <input value={s.image?.baseUrl || ""} onChange={(e) => up(["image", "baseUrl"], e.target.value)} />
+        <Field label="来源">
+          <select value={s.image?.source === "uranus" ? "uranus" : "manual"} onChange={(e) => up(["image", "source"], e.target.value)}>
+            <option value="uranus">使用 Uranus「连接」里的 API（不用再填一遍）</option>
+            <option value="manual">手动填写</option>
+          </select>
         </Field>
-        <div className="two">
-          <Field label="API Key">
-            <input type="password" autoComplete="off" value={s.image?.apiKey || ""} onChange={(e) => up(["image", "apiKey"], e.target.value)} />
-          </Field>
-          <Field label="模型">
-            <input value={s.image?.model || ""} onChange={(e) => up(["image", "model"], e.target.value)} />
-          </Field>
-        </div>
+        {s.image?.source === "uranus" ? (
+          <>
+            <div className="two">
+              <Field label="连接">
+                <select value={s.image?.uranusProviderId || ""} onChange={(e) => up(["image"], { ...s.image, uranusProviderId: e.target.value, model: "" })}>
+                  <option value="">选一个…</option>
+                  {providers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name?.trim() || p.id}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="模型">
+                <select value={s.image?.model || ""} onChange={(e) => up(["image", "model"], e.target.value)}>
+                  <option value="">选一个…</option>
+                  {imageModels.map((m) => (
+                    <option key={m.model} value={m.model}>
+                      {m.alias?.trim() || m.model}
+                      {m.category === "image" ? "（生图）" : ""}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <p className="hint faint">
+              密钥不会复制到 Companion：每次出图时现从 Uranus 读取，所以在 Uranus 里换密钥会自动生效。需要先在上面「Uranus 桥接」填好地址和后端密钥。只支持自定义 / OpenAI 这两种连接类型。
+            </p>
+          </>
+        ) : (
+          <>
+            <Field label="Base URL">
+              <input value={s.image?.baseUrl || ""} onChange={(e) => up(["image", "baseUrl"], e.target.value)} />
+            </Field>
+            <div className="two">
+              <Field label="API Key">
+                <input type="password" autoComplete="off" value={s.image?.apiKey || ""} onChange={(e) => up(["image", "apiKey"], e.target.value)} />
+              </Field>
+              <Field label="模型">
+                <input value={s.image?.model || ""} onChange={(e) => up(["image", "model"], e.target.value)} />
+              </Field>
+            </div>
+          </>
+        )}
         <Field label="固定提示词前缀">
           <textarea style={{ minHeight: 56 }} value={s.image?.positivePrompt || ""} onChange={(e) => up(["image", "positivePrompt"], e.target.value)} />
         </Field>
@@ -561,7 +635,7 @@ export function SettingsPage({ ctx }) {
         </p>
         <StyleBlock title={`${s.userName || "我"} 的一天`} value={ap.my} onChange={(v) => up(["appearance", "my"], v)} fonts={fonts} />
         <StyleBlock title={`${s.characterName || "Loki"} 的一天 / 建议`} value={ap.loki} onChange={(v) => up(["appearance", "loki"], v)} fonts={fonts} />
-        <Field label="上传字体（.woff2 / .woff / .ttf / .otf，6MB 以内，只存在你自己的 Companion 里）">
+        <Field label="上传字体文件（.woff2 / .woff / .ttf / .otf，6MB 以内；文件太大就用下面的链接）">
           <input
             type="file"
             accept=".woff2,.woff,.ttf,.otf"
@@ -572,10 +646,11 @@ export function SettingsPage({ ctx }) {
             }}
           />
         </Field>
+        <FontLinkForm cx={cx} load={load} toast={toast} />
         {fonts.map((f) => (
           <div className="row" key={f.id} style={{ marginBottom: 6 }}>
             <span className="grow">{f.name}</span>
-            <span className="meta">{f.ext}</span>
+            <span className="meta">{f.url ? (f.kind === "css" ? "样式表链接" : "字体链接") : f.ext}</span>
             <button type="button" className="link" onClick={() => removeFont(f)}>
               删除
             </button>
@@ -586,7 +661,7 @@ export function SettingsPage({ ctx }) {
         </Field>
       </div>
 
-      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b5 · 整理卡片在「基本」下面</div>
+      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b9 · 整理卡片在「基本」下面</div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
         <button type="button" className="pill solid" disabled={busy} onClick={() => save()}>
           {busy ? "保存中…" : "保存设置"}

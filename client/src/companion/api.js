@@ -85,29 +85,51 @@ export async function ensureFonts(fonts) {
     if (loaded.has(f.id)) continue;
     loaded.add(f.id);
     try {
-      const buf = await (await fetch(fontUrl(f.id))).arrayBuffer();
-      const face = new FontFace(`cmpf-${f.id}`, buf);
-      await face.load();
-      document.fonts.add(face);
+      if (f.url && f.kind === "css") {
+        // Google Fonts 这类样式表链接：挂一个 <link>，字体名由用户填（family）
+        if (!document.getElementById(`cmpf-link-${f.id}`)) {
+          const l = document.createElement("link");
+          l.id = `cmpf-link-${f.id}`;
+          l.rel = "stylesheet";
+          l.href = f.url;
+          document.head.appendChild(l);
+        }
+      } else if (f.url) {
+        // 字体文件直链：浏览器自己去拉，不占 Companion 的存储（对方要允许跨域，大多数字体 CDN 都允许）
+        const face = new FontFace(`cmpf-${f.id}`, `url(${JSON.stringify(f.url)})`);
+        await face.load();
+        document.fonts.add(face);
+      } else {
+        const buf = await (await fetch(fontUrl(f.id))).arrayBuffer();
+        const face = new FontFace(`cmpf-${f.id}`, buf);
+        await face.load();
+        document.fonts.add(face);
+      }
     } catch {
       loaded.delete(f.id);
     }
   }
 }
 
-function family(v) {
+function family(v, fonts) {
   if (!v) return "inherit";
-  if (v.startsWith("font:")) return `"cmpf-${v.slice(5)}", sans-serif`;
+  if (v.startsWith("font:")) {
+    const f = (fonts || []).find((x) => x.id === v.slice(5));
+    if (f?.kind === "css" && f.family) return `${JSON.stringify(f.family)}, sans-serif`;
+    return `"cmpf-${v.slice(5)}", sans-serif`;
+  }
   if (v.startsWith("css:")) return `${JSON.stringify(v.slice(4))}, sans-serif`;
   return "inherit";
 }
 
 /** 外观设置 → 挂在 Companion 根节点上的 CSS 变量（只在 Companion 的 Shadow DOM 里生效）。 */
-export function appearanceVars(a) {
+export function appearanceVars(a, fonts) {
   const out = {};
   const put = (p, s = {}) => {
-    out[`--${p}-tf`] = family(s.titleFont);
-    out[`--${p}-df`] = family(s.descFont);
+    // 标题和描述现在共用一种字体（老设置里的 titleFont / descFont 照样认）
+    const f = family(s.font || s.titleFont || s.descFont, fonts);
+    out[`--${p}-tf`] = f;
+    out[`--${p}-df`] = f;
     if (s.titleColor) out[`--${p}-tc`] = s.titleColor;
     if (s.descColor) out[`--${p}-dc`] = s.descColor;
     if (s.titleSize) out[`--${p}-ts`] = `${Number(s.titleSize)}px`;

@@ -79,7 +79,7 @@ function confetti(root) {
 
 const PAGES = ["day", "diary", "feed", "settings"];
 
-export function CompanionApp({ page }) {
+export function CompanionApp({ page, providers = [] }) {
   const { data, error, load } = useCompanion();
   const [date, setDate] = useState(null);
   const [toastText, setToastText] = useState("");
@@ -101,11 +101,12 @@ export function CompanionApp({ page }) {
     if (data?.fonts) ensureFonts(data.fonts);
   }, [data?.fonts]);
 
-  const vars = useMemo(() => appearanceVars(s?.appearance), [s?.appearance]);
+  const vars = useMemo(() => appearanceVars(s?.appearance, data?.fonts), [s?.appearance, data?.fonts]);
   const css = useMemo(() => CSS + "\n" + cleanCss(s?.appearance?.css), [s?.appearance?.css]);
   const pageId = PAGES.includes(page) ? page : "day";
 
   const ctx = {
+    providers,
     data,
     load,
     toast,
