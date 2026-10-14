@@ -35,7 +35,7 @@ import { PresetPanel } from "./panels/preset.jsx";
 import { RolePanel } from "./panels/role.jsx";
 import { TheaterPanel } from "./panels/theater.jsx";
 import { MusicPanel } from "./panels/music.jsx";
-import { HomeButton, PhoneHome, setTheme, useTheme } from "./phonehome.jsx";
+import { HomeBar, HomeButton, PhoneAppStyle, PhoneHome, setTheme, useTheme } from "./phonehome.jsx";
 import { CustomCssPanel, useCustomCss } from "./customcss.jsx";
 import { CompanionPanel } from "./panels/companion.jsx";
 import { PhonePanel } from "./panels/phone.jsx";
@@ -607,7 +607,7 @@ export function AppShell() {
             `transition-all` 会把里面图标的字色变化也拖成 150ms，反而显得黏。
           */}
           <nav
-            className={`hidden shrink-0 flex-col items-center justify-between overflow-hidden border-r border-line py-4 transition-[width] duration-150 md:flex ${
+            className={`${phoneMode ? "hidden" : "hidden md:flex"} shrink-0 flex-col items-center justify-between overflow-hidden border-r border-line py-4 transition-[width] duration-150 ${
               railWide ? "w-[200px]" : "w-[60px]"
             }`}
           >
@@ -615,7 +615,7 @@ export function AppShell() {
           </nav>
 
           {/* 二层：260px 条目面板。独立滚动，右边一条 1px 实线 */}
-          <aside className="hidden w-[260px] shrink-0 overflow-y-auto border-r border-line md:block" data-scroll>
+          <aside className={`${phoneMode ? "hidden" : "hidden md:block"} w-[260px] shrink-0 overflow-y-auto border-r border-line`} data-scroll>
             {listPanel}
           </aside>
 
@@ -626,13 +626,16 @@ export function AppShell() {
               都常驻，没有可点开的东西。
               `shrink-0`：它是 flex 列里的固定一行，不给的话内容一多就被压扁。
             */}
-            <div className="flex shrink-0 items-center gap-1 border-b border-line px-2 py-2 md:hidden">
+            <div
+              className={`flex shrink-0 items-center gap-1 border-b border-line px-2 py-2 ${phoneMode ? "ph-appbar" : "md:hidden"}`}
+            >
               {phoneMode && (
                 <HomeButton
                   onClick={() => setHome(true)}
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-item text-ink transition-colors duration-150 hover:bg-sunken"
                 />
               )}
+              {!phoneMode && (
               <button
                 type="button"
                 onClick={() => setRail(true)}
@@ -642,6 +645,7 @@ export function AppShell() {
               >
                 <Menu size={20} strokeWidth={1.75} />
               </button>
+              )}
               {/*
                 当前位置。`truncate` + `min-w-0`：角色名长的时候截断，
                 而不是把右边那个键挤出屏幕。
@@ -662,7 +666,7 @@ export function AppShell() {
             </div>
 
             {/* 手机上左右留白收到 16px：375px 的屏上 24px×2 是实打实的一行字 */}
-            <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto px-4 md:px-6 lg:px-10" data-scroll>
+            <main key={phoneMode ? tab : "main"} ref={mainRef} className={`min-h-0 flex-1 overflow-y-auto px-4 md:px-6 lg:px-10 ${phoneMode ? "ph-appin" : ""}`} data-scroll>
               <div className="mx-auto max-w-content py-rhythm-sm lg:py-rhythm">
                 {/* 分区标题：72px（移动端 40px），整页只有这一处这么大 */}
                 <header className="mb-rhythm-sm lg:mb-rhythm">
@@ -743,6 +747,7 @@ export function AppShell() {
             </main>
 
             <GlobalSaveBar hint={hint} />
+            {phoneMode && <HomeBar onClick={() => setHome(true)} />}
           </div>
         </div>
 
@@ -809,7 +814,7 @@ export function AppShell() {
         {/* 移动端：260px 那栏改成覆盖层滑出 */}
         {drawer && (
           <div
-            className="fixed inset-0 z-40 bg-ink/20 md:hidden"
+            className={`fixed inset-0 z-40 bg-ink/20 ${phoneMode ? "" : "md:hidden"}`}
             onMouseDown={(e) => {
               if (e.target === e.currentTarget) setDrawer(false);
             }}
@@ -837,6 +842,7 @@ export function AppShell() {
         */}
         <AssistantBubble />
 
+        {phoneMode && <PhoneAppStyle />}
         {/* 小手机主屏幕：盖在整个控制台上面，z-35，在气泡（z-30）之上、弹窗（z-40）之下 */}
         {phoneMode && home && (
           <PhoneHome

@@ -28,6 +28,9 @@ const DEFAULTS = {
   quote: "keep happy",
   note: "Take your time. Everything you need is already here.",
   since: "", // 纪念日，YYYY-MM-DD
+  avatarRole: "", // 头像 / 资料卡背景：缩小后的 dataURL，只存在这个浏览器里
+  avatarUser: "",
+  cover: "",
 };
 
 let cache = null;
@@ -133,53 +136,114 @@ function AppIcon({ item, onOpen, small }) {
   );
 }
 
-function ClockTile() {
-  const now = useNow(15000);
-  const h = (now.getHours() % 12) + now.getMinutes() / 60;
-  const m = now.getMinutes();
+/** 选一张图，缩到最长边 max 像素再转 JPEG dataURL（存 localStorage 不能太大）。 */
+function readImage(file, max, quality = 0.82) {
+  return new Promise((resolve) => {
+    if (!file || !file.type?.startsWith("image/")) return resolve("");
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(img.width * k));
+      c.height = Math.max(1, Math.round(img.height * k));
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      try {
+        resolve(c.toDataURL("image/jpeg", quality));
+      } catch {
+        resolve("");
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve("");
+    };
+    img.src = url;
+  });
+}
+
+/** 点一下就能换图的小圆头像。没有图时显示名字首字母。 */
+function Avatar({ src, letter, onPick, className = "" }) {
+  const ref = useRef(null);
   return (
-    <div className="ph-app" aria-hidden="true">
-      <span className="ph-ico ph-clock">
-        {Array.from({ length: 12 }, (_, i) => (
-          <i key={i} className="ph-tick" style={{ transform: `rotate(${i * 30}deg) translateY(-23px)` }} />
-        ))}
-        <b className="ph-hand ph-hand-h" style={{ transform: `rotate(${h * 30}deg)` }} />
-        <b className="ph-hand ph-hand-m" style={{ transform: `rotate(${m * 6}deg)` }} />
-        <u className="ph-pin" />
+    <>
+      <span
+        role="button"
+        tabIndex={0}
+        data-nopick
+        className={`ph-av ${className}`}
+        title="点一下换头像"
+        style={src ? { backgroundImage: `url(${src})` } : undefined}
+        onClick={(e) => {
+          e.stopPropagation();
+          ref.current?.click();
+        }}
+        onKeyDown={(e) => e.key === "Enter" && ref.current?.click()}
+      >
+        {!src && letter}
       </span>
-      <span className="ph-label">时钟</span>
-    </div>
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          const url = await readImage(f, 256, 0.85);
+          if (url) onPick(url);
+        }}
+      />
+    </>
   );
 }
 
-function CalendarTile({ onOpen }) {
-  const now = useNow(60000);
-  return (
-    <button type="button" className="ph-app" onClick={() => onOpen("companion")} aria-label="日历" title="日历">
-      <span className="ph-ico ph-cal">
-        <small>周{WEEK[now.getDay()]}</small>
-        <strong>{now.getDate()}</strong>
-      </span>
-      <span className="ph-label">日历</span>
-    </button>
-  );
+/** 让浏览器 / 系统顶部那一条的颜色跟着主题走（iOS Safari、Android Chrome 认 theme-color）。 */
+const SKIN_TOP = { glass: "#a9c9ee", cream: "#eceee8", dark: "#1e2433" };
+function useChromeColor(color) {
+  useEffect(() => {
+    const head = document.head;
+    let meta = head.querySelector('meta[name="theme-color"]');
+    const made = !meta;
+    const prevColor = meta?.getAttribute("content");
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      head.appendChild(meta);
+    }
+    meta.setAttribute("content", color);
+    // 让页面能画到刘海 / 状态栏下面，内容靠 safe-area 内边距避开
+    const vp = head.querySelector('meta[name="viewport"]');
+    const prevVp = vp?.getAttribute("content");
+    if (vp && !/viewport-fit/.test(prevVp ?? "")) vp.setAttribute("content", `${prevVp},viewport-fit=cover`);
+    const rootBg = document.documentElement.style.backgroundColor;
+    document.documentElement.style.backgroundColor = color;
+    return () => {
+      if (made) meta.remove();
+      else if (prevColor != null) meta.setAttribute("content", prevColor);
+      if (vp && prevVp != null) vp.setAttribute("content", prevVp);
+      document.documentElement.style.backgroundColor = rootBg;
+    };
+  }, [color]);
 }
 
 /* ---------------------------------------------------------------- 主屏幕 */
 
-const DOCK = ["imessage", "companion", "phone", "console"];
-const P1_MINI = ["role", "user"];
-const P1_ROW = ["preset", "world", "gallery", "memories", "api", "context", "offline", "theater"];
+const DOCK = ["world", "preset", "memories", "companion"];
+const P1_MINI = ["role", "user", "gallery", "api"];
 
 export function PhoneHome({ nav, config, onOpen, onExit }) {
   const theme = useTheme();
   const now = useNow(15000);
   const pagerRef = useRef(null);
   const [page, setPage] = useState(0);
+  const coverRef = useRef(null);
+  useChromeColor(SKIN_TOP[theme.skin] ?? SKIN_TOP.glass);
 
   const byId = Object.fromEntries(nav.map((n) => [n.id, n]));
   const pick = (ids) => ids.map((id) => byId[id]).filter(Boolean);
-  const used = new Set([...DOCK, ...P1_MINI, ...P1_ROW, "music"]);
+  const used = new Set([...DOCK, ...P1_MINI, "music"]);
   const rest = nav.filter((n) => !used.has(n.id));
 
   const role = (config?.roles ?? [])[0];
@@ -215,13 +279,34 @@ export function PhoneHome({ nav, config, onOpen, onExit }) {
           {/* ---- 第 1 屏 ---- */}
           <div className="ph-page">
             <div className="ph-grid">
-              <div className="ph-w ph-prof ph-s4">
-                <div className="ph-cover" />
-                <div className="ph-avatar">{[...roleName][0]?.toUpperCase()}</div>
+              <div
+                className={`ph-w ph-prof ph-s4${theme.cover ? " has-cover" : ""}`}
+                onClick={(e) => {
+                  if (!e.target.closest("[data-nopick]")) coverRef.current?.click();
+                }}
+                title="点背景可以换这张卡的背景图"
+              >
+                {theme.cover && <span className="ph-pbg" style={{ backgroundImage: `url(${theme.cover})` }} />}
+                <input
+                  ref={coverRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    const url = await readImage(f, 900, 0.8);
+                    if (url) setTheme({ cover: url });
+                  }}
+                />
+                <Avatar src={theme.avatarRole} letter={[...roleName][0]?.toUpperCase()} onPick={(u) => setTheme({ avatarRole: u })} className="ph-avatar" />
                 <div className="ph-name">{roleName}</div>
                 <div className="ph-handle">@{roleName.toLowerCase().replace(/\s+/g, "_")} <span>|</span> @{userName.toLowerCase().replace(/\s+/g, "_")}</div>
-                <Editable className="ph-tagline" value={theme.tagline} onSave={(v) => setTheme({ tagline: v })} />
+                <span data-nopick><Editable className="ph-tagline" value={theme.tagline} onSave={(v) => setTheme({ tagline: v })} /></span>
                 <div className="ph-where">◉ {Intl.DateTimeFormat().resolvedOptions().timeZone.split("/").pop().replace(/_/g, " ")} · {dateText}</div>
+                {theme.cover && (
+                  <button type="button" data-nopick className="ph-reset" onClick={() => setTheme({ cover: "" })}>还原背景</button>
+                )}
               </div>
 
               <button type="button" className="ph-w ph-music ph-s2 ph-r2" onClick={() => onOpen("music")} aria-label="一起听歌">
@@ -231,11 +316,8 @@ export function PhoneHome({ nav, config, onOpen, onExit }) {
                 <span className="ph-play"><Play size={16} fill="currentColor" strokeWidth={0} /></span>
                 <span className="ph-bar"><i /></span>
               </button>
-              <ClockTile />
-              <CalendarTile onOpen={onOpen} />
               {pick(P1_MINI).map((n) => <AppIcon key={n.id} item={n} onOpen={onOpen} />)}
 
-              {pick(P1_ROW).map((n) => <AppIcon key={n.id} item={n} onOpen={onOpen} />)}
             </div>
           </div>
 
@@ -243,7 +325,10 @@ export function PhoneHome({ nav, config, onOpen, onExit }) {
           <div className="ph-page">
             <div className="ph-grid">
               <div className="ph-w ph-count ph-s2">
-                <div className="ph-pair"><span>{[...roleName][0]?.toUpperCase()}</span><span>{[...userName][0]?.toUpperCase()}</span></div>
+                <div className="ph-pair">
+                  <Avatar src={theme.avatarRole} letter={[...roleName][0]?.toUpperCase()} onPick={(u) => setTheme({ avatarRole: u })} className="ph-av-s" />
+                  <Avatar src={theme.avatarUser} letter={[...userName][0]?.toUpperCase()} onPick={(u) => setTheme({ avatarUser: u })} className="ph-av-s" />
+                </div>
                 <div className="ph-cap">We fall in love</div>
                 {days === null ? (
                   <label className="ph-since">
@@ -292,6 +377,17 @@ export function HomeButton({ onClick, className = "" }) {
   );
 }
 
+/** 进了功能页之后的「手机 App 框」样式：进场动画 + 底部 Home 横条 + 顶栏毛玻璃。 */
+export function PhoneAppStyle() {
+  return <style>{APP_CSS}</style>;
+}
+export function HomeBar({ onClick }) {
+  return (
+    <button type="button" className="ph-homebar" onClick={onClick} aria-label="回到主屏幕" title="回到主屏幕">
+      <i />
+    </button>
+  );
+}
 /* ---------------------------------------------------------------- 查手机里的设置卡 */
 
 export function ThemeCard({ Card, Button }) {
@@ -365,8 +461,15 @@ const CSS = `
 .ph-ico-dock{width:58px;height:58px;border-radius:19px}
 /* 资料卡 */
 .ph-prof{padding:0 18px 16px;text-align:center}
-.ph-cover{height:78px;margin:0 -18px;background:linear-gradient(120deg,rgba(255,255,255,.35),rgba(255,255,255,.08)),var(--ph-bg);opacity:.9}
-.ph-avatar{width:68px;height:68px;margin:-34px auto 6px;border-radius:50%;display:grid;place-items:center;font-size:28px;font-weight:700;background:linear-gradient(145deg,#fff 0%,#cfe0f6 100%);color:#4a6fa5;border:3px solid rgba(255,255,255,.85);box-shadow:0 6px 18px rgba(20,40,90,.25);text-shadow:none;position:relative}
+.ph-av{display:grid;place-items:center;font-weight:700;background:linear-gradient(145deg,#fff 0%,#cfe0f6 100%) center/cover no-repeat;color:#4a6fa5;border:3px solid rgba(255,255,255,.85);box-shadow:0 6px 18px rgba(20,40,90,.25);text-shadow:none;cursor:pointer;border-radius:50%;position:relative;overflow:hidden}
+.ph-avatar{width:72px;height:72px;margin:0 auto 6px;font-size:29px}
+.ph-prof{padding:20px 18px 16px;cursor:pointer}
+.ph-pbg{position:absolute;inset:0;background-size:cover;background-position:center;z-index:0}
+.ph-pbg::after{content:"";position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.12),rgba(0,0,0,.38))}
+.ph-prof>*:not(.ph-pbg){position:relative;z-index:1}
+.ph-prof.has-cover .ph-handle,.ph-prof.has-cover .ph-where{color:rgba(255,255,255,.85)}
+.ph-prof.has-cover{color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.55)}
+.ph-reset{position:absolute!important;top:8px;right:10px;border:1px solid rgba(255,255,255,.5);background:rgba(0,0,0,.28);color:#fff;border-radius:999px;font-size:10px;padding:2px 8px;cursor:pointer}
 .ph-name{font-size:21px;font-weight:700;letter-spacing:.01em}
 .ph-handle{font-size:12px;color:var(--ph-soft);margin-top:2px}.ph-handle span{opacity:.6;margin:0 3px}
 .ph-tagline{display:block;margin:6px 8px 0;font-family:"Cormorant Garamond",Georgia,"Songti SC",serif;font-style:italic;font-size:14px;line-height:1.35}
@@ -379,16 +482,9 @@ const CSS = `
 .ph-mt{font-size:15px;font-weight:700}.ph-ms{font-size:11px;color:var(--ph-soft);margin-bottom:14px}
 .ph-play{position:absolute;right:12px;bottom:22px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--ph-tile);border:1px solid var(--ph-line)}
 .ph-bar{position:absolute;left:12px;right:12px;bottom:11px;height:3px;border-radius:3px;background:rgba(255,255,255,.3)}.ph-bar i{display:block;width:0%;height:100%;border-radius:3px;background:var(--ph-accent)}
-/* 时钟 / 日历 */
-.ph-clock{overflow:hidden}
-.ph-tick{position:absolute;left:50%;top:50%;width:2px;height:5px;margin:-2.5px 0 0 -1px;border-radius:1px;background:var(--ph-ico);opacity:.55}
-.ph-hand{position:absolute;left:50%;bottom:50%;transform-origin:50% 100%;border-radius:2px;background:var(--ph-ico)}
-.ph-hand-h{width:3px;height:15px;margin-left:-1.5px}.ph-hand-m{width:2px;height:21px;margin-left:-1px}
-.ph-pin{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:var(--ph-ico)}
-.ph-cal{align-content:center;gap:0}.ph-cal small{font-size:10px;font-weight:700;opacity:.75;line-height:1}.ph-cal strong{font-size:27px;font-weight:600;line-height:1.05}
 /* 纪念日 / 小句子 */
 .ph-count{padding:14px 12px;text-align:center;min-height:150px}
-.ph-pair{display:flex;justify-content:center}.ph-pair span{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:linear-gradient(145deg,#fff,#cfe0f6);color:#4a6fa5;border:2.5px solid rgba(255,255,255,.85);text-shadow:none}.ph-pair span+span{margin-left:-10px}
+.ph-pair{display:flex;justify-content:center}.ph-av-s{width:46px;height:46px;font-size:18px;border-width:2.5px}.ph-av-s+input+.ph-av-s{margin-left:-10px}
 .ph-cap{margin-top:8px;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:15px}
 .ph-days{position:relative;display:block;margin-top:4px;cursor:pointer}.ph-days b{font-size:34px;font-weight:650}.ph-days small{font-size:13px;margin-left:3px;opacity:.8}
 .ph-days input,.ph-since input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
@@ -402,4 +498,12 @@ const CSS = `
 .ph-dots button{width:7px;height:7px;border-radius:50%;border:0;padding:0;background:var(--ph-fg);opacity:.35;cursor:pointer}
 .ph-dots button.on{opacity:.95}
 .ph-dock{flex:0 0 auto;margin:0 14px max(14px,env(safe-area-inset-bottom));padding:11px 12px;border-radius:34px;display:flex;justify-content:space-around;background:var(--ph-card);border:1px solid var(--ph-line);backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 14px 34px rgba(20,40,90,.18)}
+`;
+
+const APP_CSS = `
+@keyframes phAppIn{from{opacity:0;transform:scale(.965) translateY(10px)}to{opacity:1;transform:none}}
+.ph-appin{animation:phAppIn .24s ease both}
+.ph-appbar{padding-top:max(8px,env(safe-area-inset-top));background:rgba(255,255,255,.82);backdrop-filter:blur(16px) saturate(160%);-webkit-backdrop-filter:blur(16px) saturate(160%)}
+.ph-homebar{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:100%;height:calc(24px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);border:0;background:transparent;cursor:pointer}
+.ph-homebar i{display:block;width:134px;height:5px;border-radius:3px;background:rgba(24,24,27,.82)}
 `;
