@@ -11,7 +11,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Home, Play } from "lucide-react";
+import { Home, Pause, Play } from "lucide-react";
+import { toggle as toggleMusic, useMusic } from "./musicstore.js";
 
 /* ---------------------------------------------------------------- 主题状态 */
 
@@ -64,6 +65,43 @@ export function useTheme() {
     },
     snapshot,
     snapshot,
+  );
+}
+
+/* ---------------------------------------------------------------- 一起听歌小组件
+ * 没在放：耳机图标 + 「一起听歌 / Listen together」。
+ * 放着（或暂停在中途）：封面 + 歌名 + 歌手；右下角的按钮可以直接播放 / 暂停，不用点进去。
+ * 订阅的只是「当前歌」和「播放中」，不跟着进度条每秒重画；进度条单独一小块自己订阅。 */
+function MusicProgress() {
+  const f = useMusic((s) => (s.dur ? Math.min(1, s.pos / s.dur) : 0));
+  return <i style={{ width: `${f * 100}%` }} />;
+}
+function MusicWidget({ onOpen, Icon }) {
+  const song = useMusic((s) => s.queue[s.idx] || null);
+  const playing = useMusic((s) => s.playing);
+  return (
+    <button type="button" className="ph-w ph-music ph-s2 ph-r2" onClick={onOpen} aria-label="一起听歌">
+      <span className="ph-art">
+        {song?.cover ? <img src={song.cover + "?param=300y300"} alt="" className="ph-cover" /> : Icon ? <Icon size={44} strokeWidth={1.4} /> : null}
+      </span>
+      <span className="ph-mt">{song ? song.name : "一起听歌"}</span>
+      <span className="ph-ms">{song ? song.artist : "Listen together"}</span>
+      <span
+        className="ph-play"
+        role="button"
+        aria-label={playing ? "暂停" : "播放"}
+        onClick={(e) => {
+          if (!song) return;
+          e.stopPropagation();
+          toggleMusic();
+        }}
+      >
+        {playing ? <Pause size={16} fill="currentColor" strokeWidth={0} /> : <Play size={16} fill="currentColor" strokeWidth={0} />}
+      </span>
+      <span className="ph-bar">
+        <MusicProgress />
+      </span>
+    </button>
   );
 }
 
@@ -309,13 +347,7 @@ export function PhoneHome({ nav, config, onOpen, onExit }) {
                 )}
               </div>
 
-              <button type="button" className="ph-w ph-music ph-s2 ph-r2" onClick={() => onOpen("music")} aria-label="一起听歌">
-                <span className="ph-art">{(() => { const I = byId.music?.icon; return I ? <I size={44} strokeWidth={1.4} /> : null; })()}</span>
-                <span className="ph-mt">一起听歌</span>
-                <span className="ph-ms">Listen together</span>
-                <span className="ph-play"><Play size={16} fill="currentColor" strokeWidth={0} /></span>
-                <span className="ph-bar"><i /></span>
-              </button>
+              <MusicWidget onOpen={() => onOpen("music")} Icon={byId.music?.icon} />
               {pick(P1_MINI).map((n) => <AppIcon key={n.id} item={n} onOpen={onOpen} />)}
 
             </div>
@@ -478,8 +510,10 @@ const CSS = `
 .ph-edit{width:100%;background:rgba(255,255,255,.25);border:1px solid var(--ph-line);border-radius:10px;padding:4px 8px;color:inherit;font:inherit;text-align:center;outline:none}
 /* 音乐 */
 .ph-music{align-self:stretch;border:1px solid var(--ph-line);padding:12px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:3px;text-align:left;cursor:pointer;min-height:150px}
-.ph-art{width:100%;flex:1 1 auto;min-height:64px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(255,255,255,.55),rgba(255,255,255,.12));border:1px solid var(--ph-line);color:var(--ph-ico);margin-bottom:6px}
+.ph-cover{width:100%;height:100%;object-fit:cover;border-radius:15px;display:block}
+.ph-art{overflow:hidden;width:100%;flex:1 1 auto;min-height:64px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(255,255,255,.55),rgba(255,255,255,.12));border:1px solid var(--ph-line);color:var(--ph-ico);margin-bottom:6px}
 .ph-mt{font-size:15px;font-weight:700}.ph-ms{font-size:11px;color:var(--ph-soft);margin-bottom:14px}
+.ph-mt,.ph-ms{max-width:calc(100% - 38px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ph-play{position:absolute;right:12px;bottom:22px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--ph-tile);border:1px solid var(--ph-line)}
 .ph-bar{position:absolute;left:12px;right:12px;bottom:11px;height:3px;border-radius:3px;background:rgba(255,255,255,.3)}.ph-bar i{display:block;width:0%;height:100%;border-radius:3px;background:var(--ph-accent)}
 /* 纪念日 / 小句子 */
