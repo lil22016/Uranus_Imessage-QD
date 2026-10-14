@@ -1,15 +1,13 @@
 /*
- * Companion 面板（侧栏「查手机」上方）。
- * 实际界面在 ../companion/，这里只负责从外壳读到当前选中的是哪一页，
- * 以及把 Uranus「连接」里的服务商列表递给它（图片生成可以直接选，不用再填一遍）。
+ * Companion：整屏打开，自己带「日程 / 日记 / 动态 / 设置」底栏（和 Companion 网站是同一份界面）。
+ * 不再套 Uranus 的顶栏、标题和侧栏；外壳（shell.jsx）把它铺满整个窗口，onExit 负责回到进来之前的地方。
+ * 同时把 Uranus「连接」里的服务商列表递给它（图片生成、音乐可以直接选，不用再填一遍）。
  */
 
 import { CompanionApp } from "../companion/panel.jsx";
-import { useSection } from "../section.jsx";
 import { useConfig } from "../store.jsx";
 
-export function CompanionPanel() {
-  const { itemId } = useSection();
+export function CompanionPanel({ onExit }) {
   const { config } = useConfig();
-  return <CompanionApp page={itemId} providers={config?.providers ?? []} />;
+  return <CompanionApp standalone onExit={onExit} providers={config?.providers ?? []} />;
 }

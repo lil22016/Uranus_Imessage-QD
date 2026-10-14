@@ -2,7 +2,7 @@
  * Companion 设置页。
  *
  * 先移了最常用的：名字 / 时区 / 表情库、模型、Loki 自主、人设、Uranus 桥接、图片生成、外观。
- * 「手动推送 / 精简会话」「重置数据」这类很少用的工具还在原来的 Companion 页面里，之后再搬。
+ * 「手动推送 / 简化会话」「清空重来」也在最下面（SessionTools / FreshStart）。
  */
 
 import { useEffect, useState } from "react";
@@ -372,6 +372,142 @@ function FontLinkForm({ cx, load, toast }) {
   );
 }
 
+/* ───── 手动推给 Uranus 的会话（原 Companion 网站设置里的 Push Original / Simplify） ───── */
+function SessionTools({ ctx }) {
+  const { toast, load, data } = ctx;
+  const [pv, setPv] = useState(null);
+  const [text, setText] = useState("");
+  const [state, setState] = useState("");
+  const [busy, setBusy] = useState("");
+  const [prompt, setPrompt] = useState(data?.settings?.simplifyPrompt || "");
+  async function refresh(keepText) {
+    try {
+      const r = await cx("/session/preview");
+      setPv(r);
+      if (!keepText) setText(r.simplified || "");
+      const n = Number(r.pending) || 0;
+      setState(!r.simplified ? (n ? "还没生成" : "可手动编辑测试（现在没有待推内容）") : r.simplifiedCurrent ? "可编辑，已就绪" : n ? "已过期：之后又有新操作" : "可手动编辑测试（现在没有待推内容）");
+    } catch (e) {
+      setPv({ error: e.message });
+    }
+  }
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const n = Number(pv?.pending) || 0;
+  async function push(rep) {
+    setBusy(rep);
+    try {
+      if (rep === "simplified" && text.trim()) await cx("/session/simplified", { method: "PUT", body: { text } });
+      const r = await cx("/session/commit", { method: "POST", body: { actions: [], representation: rep } });
+      if (rep === "simplified" && !r?.empty) setText("");
+      await refresh();
+      toast(r?.empty ? "没有可推的内容" : `${rep === "simplified" ? "简化版" : "原始版"}已推送 · HTTP ${r?.bridge?.status || "OK"}`);
+    } catch (e) {
+      await refresh(true);
+      toast(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+  async function simplify() {
+    setBusy("simplify");
+    setState("简化中…");
+    try {
+      const r = await cx("/session/simplify", { method: "POST", body: {} });
+      setText(r.text || "");
+      await refresh(true);
+      toast("已简化，推送前可以随便改");
+    } catch (e) {
+      toast(e.message);
+      await refresh(true);
+    } finally {
+      setBusy("");
+    }
+  }
+  async function savePrompt() {
+    if (!prompt.trim()) return toast("提示词不能为空");
+    try {
+      await cx("/settings", { method: "PUT", body: { simplifyPrompt: prompt.trim() } });
+      await load();
+      toast("简化提示词已保存");
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+  return (
+    <div className="card gap">
+      <h3>手动推送给 Uranus</h3>
+      <p className="hint faint">把你在 Companion 里刚做的操作（待办、评论、反应…）推给 Uranus 里的 Loki。原始记录会保留到 Uranus 确认收到为止。</p>
+      <div className="profile">
+        <div className="row">
+          <b className="grow">原始会话</b>
+          <span className="meta">{n} 条</span>
+        </div>
+        <pre className="meta" style={{ whiteSpace: "pre-wrap", margin: "6px 0", maxHeight: 160, overflow: "auto" }}>
+          {pv?.error ? pv.error : n ? pv?.summary || "有待推内容，但还没有摘要。" : "没有待推的操作。"}
+        </pre>
+        {n > 0 && pv?.retrying && <p className="meta">之前有一包没收到确认，会先重发（{pv.retryActions || 0} 条）。</p>}
+        <button type="button" className="pill" disabled={!!busy} onClick={() => push("original")}>
+          {busy === "original" ? "推送中…" : n ? `推送原始版（${n} 条）` : "推送原始版"}
+        </button>
+      </div>
+      <div className="profile">
+        <div className="row">
+          <b className="grow">简化会话</b>
+          <span className="meta">{state}</span>
+        </div>
+        <textarea value={text} onChange={(e) => { setText(e.target.value); setState("已编辑，推送时才保存"); }} placeholder="点「用 Companion AI 简化」生成一份压缩版，可以自己改。" />
+        <div className="row" style={{ marginTop: 8, flexWrap: "wrap" }}>
+          <button type="button" className="pill" disabled={!!busy} onClick={simplify}>
+            {busy === "simplify" ? "简化中…" : pv?.simplified ? "重新简化" : "用 Companion AI 简化"}
+          </button>
+          <button type="button" className="pill solid" disabled={!!busy || !text.trim() || (n > 0 && !pv?.simplifiedCurrent && !text.trim())} onClick={() => push("simplified")}>
+            {busy === "simplified" ? "推送中…" : "推送简化版"}
+          </button>
+        </div>
+        <details style={{ marginTop: 8 }}>
+          <summary className="meta">调整简化提示词</summary>
+          <textarea style={{ minHeight: 160, marginTop: 6 }} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+          <button type="button" className="pill" style={{ marginTop: 6 }} onClick={savePrompt}>
+            保存提示词
+          </button>
+        </details>
+      </div>
+    </div>
+  );
+}
+
+function FreshStart({ ctx }) {
+  const { toast, load } = ctx;
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    if (!window.confirm("清空重来会永久清除：日程、日记、动态/回执、反应和评论、高亮、待推的测试内容。所有设置（模型、人设、桥接…）都保留。继续吗？")) return;
+    setBusy(true);
+    try {
+      await cx("/admin/fresh-start", { method: "POST", body: {} });
+      await load();
+      toast("已清空，设置保留");
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="card gap">
+      <h3>清空重来</h3>
+      <p className="hint faint">清除日程、日记、动态 / 回执、反应和评论、高亮，以及待推的测试内容。所有设置、模型、人设、表情库和 Uranus 桥接都会保留。</p>
+      <div>
+        <button type="button" className="pill danger" disabled={busy} onClick={go}>
+          {busy ? "清除中…" : "清空重来"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsPage({ ctx }) {
   const { data, load, toast } = ctx;
   const orig = data.settings;
@@ -661,7 +797,9 @@ export function SettingsPage({ ctx }) {
         </Field>
       </div>
 
-      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b9 · 整理卡片在「基本」下面</div>
+      <SessionTools ctx={ctx} />
+      <FreshStart ctx={ctx} />
+      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b10 · 整理卡片在「基本」下面</div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
         <button type="button" className="pill solid" disabled={busy} onClick={() => save()}>
           {busy ? "保存中…" : "保存设置"}

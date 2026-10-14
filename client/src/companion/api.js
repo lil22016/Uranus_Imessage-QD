@@ -6,14 +6,38 @@
  * 也不用单独登录 Companion —— 能进这个前端就能用。
  */
 
-const BASE = "/companion-api";
+let BASE = "/companion-api";
+/*
+ * 同一份界面有两个出口：
+ *  - Uranus 里：走 /companion-api（Pages 代理，替它带上密码）；
+ *  - Companion 网站：直接走 /api，密码由网站自己带（见 site 入口）。
+ * configure() 只在网站入口调用一次。
+ */
+let auth = { key: () => "", ask: null };
+export function configure({ base, key, ask } = {}) {
+  if (base) BASE = base;
+  if (key) auth.key = key;
+  if (ask) auth.ask = ask;
+}
+const keyQuery = () => {
+  const k = auth.key();
+  return k ? `?k=${encodeURIComponent(k)}` : "";
+};
 
 export async function cx(path, { method = "GET", body } = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const once = () => {
+    const k = auth.key();
+    const headers = {};
+    if (body !== undefined) headers["content-type"] = "application/json";
+    if (k) headers["x-companion-key"] = k;
+    return fetch(`${BASE}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  };
+  let res = await once();
+  // 网站：密码不对就一直问到对为止（取消则放弃）
+  while (res.status === 401 && auth.ask) {
+    if (!(await auth.ask(!!auth.key()))) break;
+    res = await once();
+  }
   let data = null;
   try {
     data = await res.json();
@@ -26,8 +50,8 @@ export async function cx(path, { method = "GET", body } = {}) {
   return data;
 }
 
-export const imgUrl = (id) => `${BASE}/image/${encodeURIComponent(id)}`;
-export const fontUrl = (id) => `${BASE}/font/${encodeURIComponent(id)}`;
+export const imgUrl = (id) => `${BASE}/image/${encodeURIComponent(id)}${keyQuery()}`;
+export const fontUrl = (id) => `${BASE}/font/${encodeURIComponent(id)}${keyQuery()}`;
 
 /** 把一次互动记进「待推给 Uranus 的背景事件」队列（服务端 5 分钟去抖后批量推）。失败不打扰用户。 */
 export function touch(action) {

@@ -299,6 +299,11 @@ export function AppShell() {
   // 自定义 CSS（控制台 / 查手机）：登录进来就注入，网址带 ?nocss 时跳过
   useCustomCss();
   const [tab, setTab] = useState("role");
+  // Companion 是整屏的，退出时要回到进来之前的分区
+  const prevTab = useRef("role");
+  useEffect(() => {
+    if (tab !== "companion") prevTab.current = tab;
+  }, [tab]);
   // 「小手机」主题：开着的时候先显示主屏幕，点图标才进功能页；回主屏幕靠导航轨 / 顶栏上的小房子
   const theme = useTheme();
   const phoneMode = theme.mode === "phone";
@@ -717,7 +722,6 @@ export function AppShell() {
                   {tab === "memories" && <MemoriesPanel onGoto={goto} />}
                   {tab === "music" && <MusicPanel />}
                   {tab === "theater" && <TheaterPanel />}
-                  {tab === "companion" && <CompanionPanel />}
                   {tab === "phone" && <PhonePanel />}
                   {tab === "instagram" && <InstagramPanel onGoto={goto} />}
                   {tab === "chat" && (
@@ -843,6 +847,21 @@ export function AppShell() {
         <AssistantBubble />
 
         {phoneMode && <PhoneAppStyle />}
+        {/*
+          Companion 整屏：铺满整个窗口（z-45，盖过顶栏、侧栏、主屏幕和客服气泡），
+          它自己带标题和底栏，等于「Uranus 里的 Companion 网站」。
+          左上角返回键：手机主题回主屏幕，经典主题回到进来之前的分区。
+        */}
+        {tab === "companion" && (
+          <div className="fixed inset-0 z-[45]" style={{ background: "#101117" }}>
+            <CompanionPanel
+              onExit={() => {
+                goto(prevTab.current || "role");
+                if (phoneMode) setHome(true);
+              }}
+            />
+          </div>
+        )}
         {/* 小手机主屏幕：盖在整个控制台上面，z-35，在气泡（z-30）之上、弹窗（z-40）之下 */}
         {phoneMode && home && (
           <PhoneHome

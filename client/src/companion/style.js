@@ -162,4 +162,18 @@ mark{background:rgb(250 230 130 / .55);color:inherit;border-radius:3px;padding:0
 .note{border-bottom-color:#ffffff22}
 .mine,.loki{--t-c-default:var(--k-ink)}
 mark{background:#e7d6a2;color:#272128}
+
+/* ───── 整屏模式（Uranus 里打开 Companion / Companion 网站） ───── */
+:host{display:block}
+.cmp.full{max-width:none;margin:0;padding:0;border-radius:0;border:0;min-height:0;height:100%;overflow:hidden}
+.cmp.full .fwrap{height:100%;display:flex;flex-direction:column}
+.fhead{flex:none;display:flex;align-items:center;gap:6px;padding:calc(10px + env(safe-area-inset-top)) 14px 8px;max-width:640px;width:100%;margin:0 auto}
+.fbrand small{display:block;font-size:10px;letter-spacing:.16em;color:var(--k-ink-meta)}
+.fbrand h1{margin:0;font:400 26px/1.15 Georgia,"Times New Roman","Songti SC",serif;letter-spacing:.01em}
+.ficon{display:grid;place-items:center;width:38px;height:38px;margin-left:-8px;border:0;background:none;border-radius:50%;color:var(--k-ink-soft)}
+.ficon:hover{background:var(--k-sunken)}
+.fmain{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:6px 16px 28px;max-width:640px;width:100%;margin:0 auto;-webkit-overflow-scrolling:touch}
+.ftabs{flex:none;display:flex;justify-content:center;gap:4px;padding:6px 10px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--k-line);background:linear-gradient(#14151ccc,#101116ee);backdrop-filter:blur(22px) saturate(140%);-webkit-backdrop-filter:blur(22px) saturate(140%)}
+.ftabs button{flex:1;max-width:120px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;border:0;background:none;color:var(--k-ink-meta);font-size:11px;border-radius:12px;-webkit-tap-highlight-color:transparent}
+.ftabs button.on{color:var(--k-accent);background:#ffffff10}
 `;

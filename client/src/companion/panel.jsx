@@ -15,7 +15,7 @@ import { CSS } from "./style.js";
 
 /* ───────────── Shadow DOM 外壳 ───────────── */
 
-function ShadowHost({ css, vars, children }) {
+function ShadowHost({ css, vars, full, children }) {
   const hostRef = useRef(null);
   const [root, setRoot] = useState(null);
   useEffect(() => {
@@ -23,12 +23,12 @@ function ShadowHost({ css, vars, children }) {
     setRoot(el.shadowRoot || el.attachShadow({ mode: "open" }));
   }, []);
   return (
-    <div ref={hostRef}>
+    <div ref={hostRef} style={full ? { height: "100%" } : undefined}>
       {root &&
         createPortal(
           <>
             <style>{css}</style>
-            <div className="cmp" style={vars}>
+            <div className={full ? "cmp full" : "cmp"} style={vars}>
               {children}
             </div>
           </>,
@@ -78,8 +78,37 @@ function confetti(root) {
 /* ───────────── 入口 ───────────── */
 
 const PAGES = ["day", "diary", "feed", "settings"];
+const TABS = [
+  ["day", "日程", "M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"],
+  ["diary", "日记", "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM8 8h7M8 12h7"],
+  ["feed", "动态", "M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7zM10 20a2 2 0 0 0 4 0"],
+  ["settings", "设置", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.3 3h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"],
+];
+const PAGE_KEY = "companion.page.v1";
+const readPage = () => {
+  try {
+    const v = localStorage.getItem(PAGE_KEY);
+    return PAGES.includes(v) ? v : "day";
+  } catch {
+    return "day";
+  }
+};
 
-export function CompanionApp({ page, providers = [] }) {
+function Icon({ d }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d={d} />
+    </svg>
+  );
+}
+
+/**
+ * standalone：整屏的 Companion（Uranus 里点开 Companion、以及 Companion 网站都用它）。
+ * 自带顶部标题和底部「日程 / 日记 / 动态 / 设置」切换，不依赖外面有没有侧栏。
+ * onExit：有的话左上角出现返回键（Uranus 里回主屏幕；网站里不传就没有）。
+ */
+export function CompanionApp({ page, providers = [], standalone = false, onExit }) {
+  const [tabPage, setTabPage] = useState(readPage);
   const { data, error, load } = useCompanion();
   const [date, setDate] = useState(null);
   const [toastText, setToastText] = useState("");
@@ -103,7 +132,19 @@ export function CompanionApp({ page, providers = [] }) {
 
   const vars = useMemo(() => appearanceVars(s?.appearance, data?.fonts), [s?.appearance, data?.fonts]);
   const css = useMemo(() => CSS + "\n" + cleanCss(s?.appearance?.css), [s?.appearance?.css]);
-  const pageId = PAGES.includes(page) ? page : "day";
+  const pageId = standalone ? tabPage : PAGES.includes(page) ? page : "day";
+  const goPage = (id) => {
+    setTabPage(id);
+    try {
+      localStorage.setItem(PAGE_KEY, id);
+    } catch {
+      /* ignore */
+    }
+  };
+  const mainRef = useRef(null);
+  useEffect(() => {
+    mainRef.current?.scrollTo?.(0, 0);
+  }, [pageId]);
 
   const ctx = {
     providers,
@@ -117,10 +158,9 @@ export function CompanionApp({ page, providers = [] }) {
     celebrate: () => rootRef.current && confetti(rootRef.current),
   };
 
-  return (
-    <ShadowHost css={css} vars={vars}>
-      <div ref={rootRef}>
-        {!data && !error && <p className="faint">加载中…</p>}
+  const pagesBlock = (
+    <>
+      {!data && !error && <p className="faint">加载中…</p>}
         {error && !data && <ConnectError message={error} retry={load} />}
         {error && data && <p className="err meta">刷新失败：{error}</p>}
         {data && date && (
@@ -130,6 +170,42 @@ export function CompanionApp({ page, providers = [] }) {
             {pageId === "feed" && <FeedPage ctx={ctx} />}
             {pageId === "settings" && <SettingsPage ctx={ctx} />}
           </>
+        )}
+    </>
+  );
+
+  return (
+    <ShadowHost css={css} vars={vars} full={standalone}>
+      <div ref={rootRef} className={standalone ? "fwrap" : undefined}>
+        {standalone ? (
+          <>
+            <header className="fhead">
+              {onExit && (
+                <button type="button" className="ficon" onClick={onExit} aria-label="返回">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M15 5l-7 7 7 7" />
+                  </svg>
+                </button>
+              )}
+              <div className="fbrand">
+                <small>RL7 / SHARED SPACE</small>
+                <h1>Companion</h1>
+              </div>
+            </header>
+            <main className="fmain" ref={mainRef}>
+              {pagesBlock}
+            </main>
+            <nav className="ftabs" aria-label="Companion">
+              {TABS.map(([id, label, d]) => (
+                <button key={id} type="button" className={pageId === id ? "on" : ""} onClick={() => goPage(id)}>
+                  <Icon d={d} />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </nav>
+          </>
+        ) : (
+          pagesBlock
         )}
         {dlg?.kind === "activity" && <ActivityEditor {...dlg} ctx={ctx} onClose={() => setDlg(null)} />}
         {dlg?.kind === "diaryedit" && <DiaryEditor {...dlg} ctx={ctx} onClose={() => setDlg(null)} />}
