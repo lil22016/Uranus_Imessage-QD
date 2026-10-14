@@ -3,6 +3,7 @@ import {
   AtSign,
   BookOpen,
   Brain,
+  Heart,
   Image as ImageIcon,
   Images,
   Instagram,
@@ -239,10 +240,22 @@ export const NAV = [
   {
     id: "companion",
     label: "Companion",
-    icon: BookOpen,
-    group: "角色",
-    desc: "Companion · Calendar, Diary and Activity. Independent storage remains on the existing Companion Worker.",
-    anchors: [{ id: "companion-app", label: "Shared Space" }],
+    icon: Heart,
+    itemIcon: Heart,
+    group: "Companion",
+    /*
+     * 角色和你的共同生活：日程（统一待办）、日记、互动、动态。
+     * 数据在 Companion 自己的 Worker 里，界面在 companion/ 目录（画在 Shadow DOM 里，样式不外泄）。
+     * 四个条目是固定的页面，不是配置里的东西，所以 items 不读 config。
+     */
+    desc: "你和角色的共同生活：各自一天的待办、写下的日记、表情和评论，还有角色的建议。",
+    empty: "",
+    items: () => [
+      { id: "day", label: "日程" },
+      { id: "diary", label: "日记" },
+      { id: "feed", label: "动态" },
+      { id: "settings", label: "设置" },
+    ],
   },
   {
     id: "phone",
