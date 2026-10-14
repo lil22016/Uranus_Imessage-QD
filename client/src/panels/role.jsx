@@ -2584,13 +2584,6 @@ function RoleReminderFields({ role, onGoto }) {
           label="启用定时提醒"
         />
       </label>
-      {onGoto && (
-        <div>
-          <Button variant="outline" onClick={() => onGoto("reminders")}>
-            去「提醒」看列表和默认提前量
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

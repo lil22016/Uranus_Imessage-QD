@@ -34,7 +34,8 @@ import { OfflinePanel } from "./panels/offline.jsx";
 import { PresetPanel } from "./panels/preset.jsx";
 import { RolePanel } from "./panels/role.jsx";
 import { TheaterPanel } from "./panels/theater.jsx";
-import { RemindersPanel } from "./panels/reminders.jsx";
+import { MusicPanel } from "./panels/music.jsx";
+import { HomeButton, PhoneHome, setTheme, useTheme } from "./phonehome.jsx";
 import { CustomCssPanel, useCustomCss } from "./customcss.jsx";
 import { CompanionPanel } from "./panels/companion.jsx";
 import { PhonePanel } from "./panels/phone.jsx";
@@ -298,6 +299,16 @@ export function AppShell() {
   // 自定义 CSS（控制台 / 查手机）：登录进来就注入，网址带 ?nocss 时跳过
   useCustomCss();
   const [tab, setTab] = useState("role");
+  // 「小手机」主题：开着的时候先显示主屏幕，点图标才进功能页；回主屏幕靠导航轨 / 顶栏上的小房子
+  const theme = useTheme();
+  const phoneMode = theme.mode === "phone";
+  const [home, setHome] = useState(() => theme.mode === "phone");
+  const lastMode = useRef(theme.mode);
+  useEffect(() => {
+    if (theme.mode === "phone" && lastMode.current !== "phone") setHome(true);
+    if (theme.mode !== "phone") setHome(false);
+    lastMode.current = theme.mode;
+  }, [theme.mode]);
   // 每个分区各记一个选中条目 —— 切走再切回来应该还停在原处
   const [picked, setPicked] = useState({});
   // 上下文分区的列表是 /api/sessions 拉的，由面板上报
@@ -365,7 +376,10 @@ export function AppShell() {
   }, [drawer, rail, railOpen]);
 
   const goto = useCallback((id) => {
+    // 已经下线的分区（比如旧的「提醒」）不再跳，免得停在空白页
+    if (!NAV.some((n) => n.id === id)) return;
     setTab(id);
+    setHome(false);
     setDrawer(false);
     setRail(false);
     /*
@@ -552,6 +566,12 @@ export function AppShell() {
         </div>
         <div className="my-1 h-px w-full bg-line" />
 
+        {phoneMode && (
+          <HomeButton
+            onClick={() => setHome(true)}
+            className="flex h-11 w-11 shrink-0 items-center justify-center text-ink transition-colors duration-150 hover:text-ink-soft"
+          />
+        )}
         {NAV.map((n) => (
           <RailButton
             key={n.id}
@@ -607,6 +627,12 @@ export function AppShell() {
               `shrink-0`：它是 flex 列里的固定一行，不给的话内容一多就被压扁。
             */}
             <div className="flex shrink-0 items-center gap-1 border-b border-line px-2 py-2 md:hidden">
+              {phoneMode && (
+                <HomeButton
+                  onClick={() => setHome(true)}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-item text-ink transition-colors duration-150 hover:bg-sunken"
+                />
+              )}
               <button
                 type="button"
                 onClick={() => setRail(true)}
@@ -685,7 +711,7 @@ export function AppShell() {
                   {tab === "context" && <ContextPanel onGoto={goto} />}
                   {tab === "offline" && <OfflinePanel onGoto={goto} />}
                   {tab === "memories" && <MemoriesPanel onGoto={goto} />}
-                  {tab === "reminders" && <RemindersPanel />}
+                  {tab === "music" && <MusicPanel />}
                   {tab === "theater" && <TheaterPanel />}
                   {tab === "companion" && <CompanionPanel />}
                   {tab === "phone" && <PhonePanel />}
@@ -810,6 +836,16 @@ export function AppShell() {
           都得在，而用户求助的时候恰恰不该被要求先切走到别处去提问。
         */}
         <AssistantBubble />
+
+        {/* 小手机主屏幕：盖在整个控制台上面，z-35，在气泡（z-30）之上、弹窗（z-40）之下 */}
+        {phoneMode && home && (
+          <PhoneHome
+            nav={NAV}
+            config={config}
+            onOpen={goto}
+            onExit={() => setTheme({ mode: "classic" })}
+          />
+        )}
 
         {/* 快速配置向导。关掉时顺手把「该自动弹」的标记清掉，免得下次 render 又开 */}
         <SetupWizard

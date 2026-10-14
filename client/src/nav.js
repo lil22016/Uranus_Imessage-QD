@@ -1,8 +1,8 @@
 import {
-  AlarmClock,
   AtSign,
   BookOpen,
   Brain,
+  Headphones,
   Heart,
   Image as ImageIcon,
   Images,
@@ -272,15 +272,14 @@ export const NAV = [
     items: (c) => (c.roles ?? []).map((r) => ({ id: r.id, label: roleLabel(r) })),
   },
   {
-    id: "reminders",
-    label: "提醒",
-    icon: AlarmClock,
+    id: "music",
+    label: "一起听歌",
+    icon: Headphones,
     /*
-     * 定时提醒（server/src/reminder.js）。条目在 data/reminders.json，不在 config 里；
-     * 角色那边的开关在「角色 → 单独配置 → 定时提醒」。
+     * 一起听歌：入口先留在这儿（主屏幕上那个耳机图标就是它），播放和同步的逻辑之后再接。
      */
-    desc: "角色帮你记的提醒，和你自己的课表、生日、纪念日。到点由角色按人设来找你；生日和纪念日当天还会写进时间感知。",
-    anchors: ["设置", "角色设的", "我的日程"],
+    desc: "和角色一起听同一首歌。入口已经留好，播放、歌单和「一起听」的同步之后再接上。",
+    anchors: ["一起听"],
   },
   {
     id: "theater",

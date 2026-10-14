@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { roleLabel } from "../labels.js";
 import { useSection } from "../section.jsx";
 import { api, useConfig } from "../store.jsx";
-import { Card, ResultNote } from "../ui.jsx";
+import { Button, Card, ResultNote } from "../ui.jsx";
+import { ThemeCard } from "../phonehome.jsx";
 import { IPhone } from "./phoneos.jsx";
 import { SettingsApp } from "./phonesettings.jsx";
 
@@ -119,16 +120,21 @@ export function PhonePanel() {
 
   if (!itemId || !role) {
     return (
-      <Card title="查手机" desc="左边挑一个角色，翻翻 TA 自己的手机。">
-        <p className="text-meta leading-relaxed text-ink-faint">
-          这里的东西全是模型按人设、记忆和最近的聊天虚构出来的、角色自己手机里的内容 —— 和「查岗」（看你的真屏幕）不是一回事。
-          生成、世界书、墙纸这些设置都在手机里的「设置」App 里。
-        </p>
-      </Card>
+      <>
+        <ThemeCard Card={Card} Button={Button} />
+        <Card title="查手机" desc="左边挑一个角色，翻翻 TA 自己的手机。">
+          <p className="text-meta leading-relaxed text-ink-faint">
+            这里的东西全是模型按人设、记忆和最近的聊天虚构出来的、角色自己手机里的内容 —— 和「查岗」（看你的真屏幕）不是一回事。
+            生成、世界书、墙纸这些设置都在手机里的「设置」App 里。
+          </p>
+        </Card>
+      </>
     );
   }
 
   return (
+    <>
+    <ThemeCard Card={Card} Button={Button} />
     <Card title={`${roleLabel(role)} 的手机`}>
       {error && (
         <div className="mb-6">
@@ -169,5 +175,6 @@ export function PhonePanel() {
         </>
       )}
     </Card>
+    </>
   );
 }
