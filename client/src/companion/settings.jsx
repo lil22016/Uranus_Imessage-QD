@@ -5,7 +5,7 @@
  * 「手动推送 / 简化会话」「清空重来」也在最下面（SessionTools / FreshStart）。
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cx } from "./api.js";
 import { Field } from "./editors.jsx";
 
@@ -508,6 +508,49 @@ function FreshStart({ ctx }) {
   );
 }
 
+/** 显示/排错：把这台手机上页面实际拿到的尺寸、安全区、底栏位置列出来，截图发给我就能定位问题 */
+function Diag({ onFill }) {
+  const ref = useRef(null);
+  const [t, setT] = useState("");
+  const read = () => {
+    try {
+      const root = ref.current?.getRootNode?.();
+      const probe = document.createElement("div");
+      probe.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0";
+      (root && root.appendChild ? root : document.body).appendChild(probe);
+      const cs = getComputedStyle(probe);
+      const st = cs.paddingTop, sb = cs.paddingBottom;
+      probe.remove();
+      const tabs = root?.querySelector?.(".ftabs");
+      const full = root?.querySelector?.(".cmp.full");
+      const tr = tabs?.getBoundingClientRect(), fr = full?.getBoundingClientRect();
+      const vv = window.visualViewport;
+      const sbMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.content || "无";
+      const mf = document.querySelector('link[rel="manifest"]') ? "有" : "无";
+      setT([
+        `独立 App 模式：${(window.matchMedia("(display-mode: standalone)").matches || navigator.standalone) ? "是" : "否（在浏览器里）"}`,
+        `状态栏 meta：${sbMeta} · manifest：${mf}`,
+        `屏幕：${screen.width}×${screen.height}`,
+        `窗口：${innerWidth}×${innerHeight} · 可视：${Math.round(vv?.width || 0)}×${Math.round(vv?.height || 0)}`,
+        `安全区 上 ${st} / 下 ${sb}`,
+        `Companion 容器：${fr ? Math.round(fr.top) + " → " + Math.round(fr.bottom) : "-"}`,
+        `底栏：${tr ? Math.round(tr.top) + " → " + Math.round(tr.bottom) + "（高 " + Math.round(tr.height) + "）" : "-"}`,
+        `窗口底 − 底栏底 = ${tr ? Math.round(innerHeight - tr.bottom) : "-"} · 屏幕高 − 窗口高 = ${screen.height - innerHeight}`,
+      ].join("\n"));
+    } catch (e) { setT("读取失败：" + e.message); }
+  };
+  return (
+    <div ref={ref} className="field" style={{ marginTop: 8 }}>
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        <button type="button" className="pill" onClick={read}>诊断（读取这台手机的尺寸）</button>
+        <button type="button" className="pill" onClick={() => onFill(screen.height)}>页面高度 = 屏幕高度（{screen.height}）</button>
+        <button type="button" className="pill" onClick={() => onFill("")}>页面高度 = 自动</button>
+      </div>
+      {t && <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, marginTop: 8, opacity: .85 }}>{t}</pre>}
+    </div>
+  );
+}
+
 export function SettingsPage({ ctx }) {
   const { data, load, toast } = ctx;
   const orig = data.settings;
@@ -795,6 +838,10 @@ export function SettingsPage({ ctx }) {
         <Field label="底栏下方留白（px）：留空 = 自动；填 0 = 贴着屏幕最底，数字越大离底部越远">
           <input type="number" min="0" max="80" placeholder="自动" value={ap.tabPad ?? ""} onChange={(e) => up(["appearance", "tabPad"], e.target.value === "" ? "" : Number(e.target.value))} />
         </Field>
+        <Field label="页面高度（px）：留空 = 自动；底栏离屏幕底部还有一截时，点下面「诊断」里的「页面高度 = 屏幕高度」">
+          <input type="number" min="300" max="3000" placeholder="自动" value={ap.pageH ?? ""} onChange={(e) => up(["appearance", "pageH"], e.target.value === "" ? "" : Number(e.target.value))} />
+        </Field>
+        <Diag onFill={(h) => up(["appearance", "pageH"], h)} />
         <Field label="自定义 CSS（只在 Companion 里生效；会过滤 @import 和外部图片）">
           <textarea style={{ minHeight: 120, fontFamily: "ui-monospace,monospace", fontSize: 12 }} value={ap.css || ""} onChange={(e) => up(["appearance", "css"], e.target.value)} placeholder={".act .atitle { letter-spacing: .02em; }"} />
         </Field>
@@ -802,7 +849,7 @@ export function SettingsPage({ ctx }) {
 
       <SessionTools ctx={ctx} />
       <FreshStart ctx={ctx} />
-      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b12 · 整理卡片在「基本」下面</div>
+      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b13 · 整理卡片在「基本」下面</div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
         <button type="button" className="pill solid" disabled={busy} onClick={() => save()}>
           {busy ? "保存中…" : "保存设置"}

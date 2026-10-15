@@ -470,7 +470,7 @@ const CSS = `
 .ph-device{position:relative;width:min(100vw,414px);height:min(100dvh,880px);border-radius:48px;overflow:hidden;display:flex;flex-direction:column;color:var(--ph-fg);
   background-image:var(--wallpaper-image,none),var(--ph-bg);background-size:cover;background-position:center;
   box-shadow:0 0 0 9px #0b0b0d,0 0 0 11px #404046,0 34px 90px rgba(0,0,0,.5)}
-@media (max-width:520px){.ph-device{width:100vw;height:100dvh;border-radius:0;box-shadow:none}.ph-island{display:none}}
+@media (max-width:520px){.ph-device{width:100vw;height:100dvh;border-radius:0;box-shadow:none}.ph-island{display:none}.ph-time,.ph-net,.ph-bat{display:none}.ph-status{justify-content:flex-end}}
 .ph-island{position:absolute;z-index:4;top:11px;left:50%;transform:translateX(-50%);width:112px;height:32px;border-radius:20px;background:#09090b}
 .ph-status{position:relative;z-index:3;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:max(16px,env(safe-area-inset-top)) 30px 6px;font-size:15px;font-weight:650;text-shadow:var(--ph-ts)}
 .ph-sys{display:flex;align-items:center;gap:8px;font-size:13px}
