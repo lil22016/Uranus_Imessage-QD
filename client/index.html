@@ -13,13 +13,13 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#101117" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <!-- 状态栏样式用 black（不用 black-translucent）：
-         实测 black-translucent 在这台 iPhone 上会让页面可视区比屏幕矮 62px，底下露出一条空白、固定在底的导航栏浮起来；
-         black 是「黑色状态栏 + 页面从它下面开始、一直铺到屏幕最底」，顶上那条是纯黑（和深色界面几乎融在一起），底部能真正触底。
-         iOS 只在「添加到主屏幕」那一刻读这几行，改了之后要把旧图标删掉重新添加。 -->
+    <!-- 状态栏 black-translucent：页面画到状态栏下面（真正全屏），状态栏文字固定白色。
+         iOS 26 在这种模式下 100dvh / 100% / position:fixed+inset:0 只到「可视区」（比屏幕矮 62），
+         底下会露一截；所以全屏外壳统一用 --app-h（主屏幕 App 里是 100vh），见 index.css。
+         登录页（functions/_middleware.js）必须写一样的这几行。改了要删图标重新添加。 -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Uranus" />
     <!-- 页面底色在 JS / CSS 加载前就是深色：iOS 取状态栏、回弹区、启动白屏的颜色都看它。
          这几行和 functions/_middleware.js 里登录页的 <head> 要保持一致（新装图标第一次打开看到的是登录页）。 -->

@@ -852,7 +852,7 @@ export function AppShell() {
           左上角返回键：手机主题回主屏幕，经典主题回到进来之前的分区。
         */}
         {(tab === "companion" || tab === "music") && (
-          <div style={{ position: "fixed", inset: 0, zIndex: 45, background: "#101117" }}>
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, height: "var(--app-h, 100dvh)", zIndex: 45, background: "#101117" }}>
             {(() => {
               const exit = () => {
                 goto(prevTab.current || "role");

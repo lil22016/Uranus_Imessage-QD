@@ -458,7 +458,7 @@ export function ThemeCard({ Card, Button }) {
 /* ---------------------------------------------------------------- 样式 */
 
 const CSS = `
-.ph-root{position:fixed;inset:0;z-index:35;display:flex;align-items:center;justify-content:center;overflow:hidden;
+.ph-root{position:fixed;top:0;left:0;right:0;height:var(--app-h,100dvh);z-index:35;display:flex;align-items:center;justify-content:center;overflow:hidden;
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;animation:phIn .28s ease both}
 @keyframes phIn{from{opacity:0;transform:scale(1.04)}to{opacity:1;transform:none}}
@@ -467,10 +467,10 @@ const CSS = `
 .ph-skin-cream{--ph-bg:linear-gradient(170deg,#eceee8 0%,#d9dfd4 55%,#ecebe5 100%);--ph-card:rgba(255,255,255,.58);--ph-line:rgba(255,255,255,.85);--ph-tile:#fbfaf7;--ph-ico:#6c695f;--ph-label:#57554d;--ph-ts:none;--ph-fg:#4b4a45;--ph-accent:#4b4a45;--ph-soft:#8a877c}
 .ph-skin-dark{--ph-bg:linear-gradient(160deg,#1e2433 0%,#0d1017 60%,#221f31 100%);--ph-card:rgba(255,255,255,.09);--ph-line:rgba(255,255,255,.17);--ph-tile:rgba(255,255,255,.1);--ph-ico:#f1f1f5;--ph-label:#e8e8ee;--ph-ts:0 1px 2px rgba(0,0,0,.7);--ph-fg:#f1f1f5;--ph-accent:#fff;--ph-soft:rgba(255,255,255,.6)}
 .ph-bgfill{position:absolute;inset:-40px;background-image:var(--wallpaper-image,none),var(--ph-bg);background-size:cover;background-position:center;filter:blur(26px) saturate(1.15);transform:scale(1.06)}
-.ph-device{position:relative;width:min(100vw,414px);height:min(100dvh,880px);border-radius:48px;overflow:hidden;display:flex;flex-direction:column;color:var(--ph-fg);
+.ph-device{position:relative;width:min(100vw,414px);height:min(var(--app-h,100dvh),880px);border-radius:48px;overflow:hidden;display:flex;flex-direction:column;color:var(--ph-fg);
   background-image:var(--wallpaper-image,none),var(--ph-bg);background-size:cover;background-position:center;
   box-shadow:0 0 0 9px #0b0b0d,0 0 0 11px #404046,0 34px 90px rgba(0,0,0,.5)}
-@media (max-width:520px){.ph-device{width:100vw;height:100dvh;border-radius:0;box-shadow:none}.ph-island{display:none}.ph-time,.ph-net,.ph-bat{display:none}.ph-status{justify-content:flex-end}}
+@media (max-width:520px){.ph-device{width:100vw;height:var(--app-h,100dvh);border-radius:0;box-shadow:none}.ph-island{display:none}.ph-time,.ph-net,.ph-bat{display:none}.ph-status{justify-content:flex-end}}
 .ph-island{position:absolute;z-index:4;top:11px;left:50%;transform:translateX(-50%);width:112px;height:32px;border-radius:20px;background:#09090b}
 .ph-status{position:relative;z-index:3;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:max(16px,env(safe-area-inset-top)) 30px 6px;font-size:15px;font-weight:650;text-shadow:var(--ph-ts)}
 .ph-sys{display:flex;align-items:center;gap:8px;font-size:13px}

@@ -229,7 +229,7 @@ function Lock({ mode, saved, onUnlock, onSet, onSkip, onForgot }) {
   return (
     <div
       className="fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-y-auto bg-paper px-6"
-      style={{ height: "100dvh" }}
+      style={{ height: "var(--app-h, 100dvh)", bottom: "auto" }}
     >
       <UranusBadge size={52} />
       <p className="mt-5 font-serif text-h2 text-ink">{title}</p>

@@ -525,11 +525,16 @@ function Diag({ onFill }) {
       const full = root?.querySelector?.(".cmp.full");
       const tr = tabs?.getBoundingClientRect(), fr = full?.getBoundingClientRect();
       const vv = window.visualViewport;
+      // 各种「一屏高」实际是多少 px（判断哪个能铺到物理屏幕底）
+      const hOf = (h) => { const d = document.createElement("div"); d.style.cssText = `position:absolute;left:-9999px;top:0;width:1px;height:${h}`; document.body.appendChild(d); const v = Math.round(d.getBoundingClientRect().height); d.remove(); return v; };
+      const units = ["100vh", "100lvh", "100dvh", "100svh", "var(--app-h)"].map((u) => `${u.replace("var(--app-h)", "app-h")}=${hOf(u)}`).join(" ");
+      const tc = document.querySelector('meta[name="theme-color"]')?.content || "无";
       const sbMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.content || "无";
       const mf = document.querySelector('link[rel="manifest"]') ? "有" : "无";
       setT([
         `独立 App 模式：${(window.matchMedia("(display-mode: standalone)").matches || navigator.standalone) ? "是" : "否（在浏览器里）"}`,
-        `状态栏 meta：${sbMeta} · manifest：${mf}`,
+        `状态栏 meta：${sbMeta} · manifest：${mf} · theme-color：${tc}`,
+        `高度：${units}`,
         `屏幕：${screen.width}×${screen.height}`,
         `窗口：${innerWidth}×${innerHeight} · 可视：${Math.round(vv?.width || 0)}×${Math.round(vv?.height || 0)}`,
         `安全区 上 ${st} / 下 ${sb}`,
@@ -849,7 +854,7 @@ export function SettingsPage({ ctx }) {
 
       <SessionTools ctx={ctx} />
       <FreshStart ctx={ctx} />
-      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b15 · 整理卡片在「基本」下面</div>
+      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b16 · 整理卡片在「基本」下面</div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
         <button type="button" className="pill solid" disabled={busy} onClick={() => save()}>
           {busy ? "保存中…" : "保存设置"}

@@ -54,6 +54,22 @@ html {
 }
 
 /*
+ * --app-h：全屏外壳（小手机主屏幕、Companion、音乐、锁屏）的高度。
+ * 浏览器标签页里用 100dvh（地址栏会收放）；主屏幕 App 里用 100vh ——
+ * iOS 26 + black-translucent 下 100dvh / 100% / fixed inset:0 都只到可视区（比屏幕矮 62），
+ * 只有 100vh 是整块物理屏幕。
+ */
+:root {
+  --app-h: 100vh;
+  --app-h: 100dvh;
+}
+@media (display-mode: standalone) {
+  :root {
+    --app-h: 100vh;
+  }
+}
+
+/*
  * 「一屏高」。手写而不是用 Tailwind 的 h-screen。
  *
  * h-screen 是 100vh，而手机浏览器的 100vh **不是看得见的那一屏** ——
@@ -318,20 +334,28 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /*
- * 主屏幕 App 里的顶部安全区。
- *
- * 现在状态栏是 black（页面从状态栏下面开始），safe-area-inset-top = 0，这段等于不生效；
- * 留着是给以后改回 black-translucent 用：那时整页让出刘海高度，并在那一条画深色底。
- * 深色条用 body::after —— body::before 是壁纸遮罩（veil），以前这里覆盖了它，
- * 主屏幕 App 里壁纸遮罩会整个消失。
+ * 主屏幕 App 里：页面画到状态栏下面（black-translucent）。
+ * 外层 html / body / #root 一律 100vh，不混用 100% / 100dvh；经典界面整页让出刘海那一条，
+ * 并在那一条画深色底（白色时钟才看得清）。小手机主屏幕、Companion、音乐是整屏盖层，
+ * 它们自己用 env(safe-area-inset-top) 让位。
+ * 深色条用 body::after —— body::before 是壁纸遮罩。
  */
 @media (display-mode: standalone) {
+  html,
+  body {
+    height: 100vh;
+  }
   #root {
     box-sizing: border-box;
+    height: 100vh;
     padding-top: env(safe-area-inset-top, 0px);
   }
+  body::before {
+    bottom: auto;
+    height: 100vh;
+  }
   .h-viewport {
-    height: calc(100dvh - env(safe-area-inset-top, 0px));
+    height: calc(100vh - env(safe-area-inset-top, 0px));
   }
   body::after {
     content: "";
