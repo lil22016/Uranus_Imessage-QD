@@ -334,39 +334,46 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
+/* 状态栏色带：默认不显示（浏览器标签页里没有它的事） */
+#sb-band {
+  display: none;
+}
+
 /*
  * 主屏幕 App 里：页面画到状态栏下面（black-translucent）。
  * 外层 html / body / #root 一律 100vh，不混用 100% / 100dvh；经典界面整页让出刘海那一条，
  * 并在那一条画深色底（白色时钟才看得清）。小手机主屏幕、Companion、音乐是整屏盖层，
  * 它们自己用 env(safe-area-inset-top) 让位。
- * 深色条用 body::after —— body::before 是壁纸遮罩。
+ * 顶上那条由 #sb-band 画：实心色，盖在所有层最上面（z 10000），颜色由 --sb-band 决定
+ * （默认 #101117；小手机主屏幕按皮肤改）。它必须是实心色 —— iOS 26 只有在顶边看到
+ * 实心的 fixed 盒子时才不画那层模糊。
  */
 @media (display-mode: standalone), (display-mode: fullscreen) {
   html,
   body {
-    height: var(--app-h);
+    height: calc(var(--app-h) + var(--adj-bottom, 0px));
   }
   #root {
     box-sizing: border-box;
-    height: var(--app-h);
-    padding-top: env(safe-area-inset-top, 0px);
+    height: calc(var(--app-h) + var(--adj-bottom, 0px));
+    padding-top: calc(env(safe-area-inset-top, 0px) + var(--adj-top, 0px));
   }
   body::before {
     bottom: auto;
-    height: var(--app-h);
+    height: calc(var(--app-h) + var(--adj-bottom, 0px));
   }
   .h-viewport {
-    height: calc(var(--app-h) - env(safe-area-inset-top, 0px));
+    height: calc(var(--app-h) + var(--adj-bottom, 0px) - env(safe-area-inset-top, 0px) - var(--adj-top, 0px));
   }
-  body::after {
-    content: "";
+  #sb-band {
+    display: block;
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    height: env(safe-area-inset-top, 0px);
-    background: #101117;
-    z-index: 29;
+    height: calc(max(1px, env(safe-area-inset-top, 0px)) + var(--adj-top, 0px));
+    background: var(--sb-band, #101117);
+    z-index: 10000;
     pointer-events: none;
   }
 }

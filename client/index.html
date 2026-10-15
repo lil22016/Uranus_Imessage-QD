@@ -37,6 +37,10 @@
     <title>Uranus · 控制台</title>
   </head>
   <body>
+    <!-- 状态栏底下那条实心色带（只在主屏幕 App 里显示，样式见 index.css 的 #sb-band）。
+         iOS 26 的主屏幕 App 在 black-translucent 下会在顶部画一层 Liquid Glass 模糊；
+         顶边有一个实心、满宽、fixed 的盒子时，系统改用它的颜色，不再模糊。 -->
+    <div id="sb-band" aria-hidden="true"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

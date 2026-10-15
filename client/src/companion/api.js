@@ -164,7 +164,7 @@ export function appearanceVars(a, fonts) {
   // 底栏下方留白（px）：留空 = 自动（按手机底部安全区的 40%）；填 0 就是贴底
   if (a?.tabPad !== undefined && a?.tabPad !== "" && Number.isFinite(Number(a.tabPad))) out["--tab-pb"] = `${Math.max(0, Number(a.tabPad))}px`;
   // 页面高度（px）：留空 = 自动（铺满可视区）；有些 iPhone 的网页 App 可视区比屏幕矮一截，手动填屏幕高度就能撑到最底
-  if (a?.pageH !== undefined && a?.pageH !== "" && Number(a.pageH) > 200) out["--page-h"] = `${Number(a.pageH)}px`;
+  // 旧的「页面高度」设置（pageH）不再生效：改成每台设备自己的「屏幕位置微调」（screenadj.js）
   return out;
 }
 

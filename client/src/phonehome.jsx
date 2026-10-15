@@ -246,6 +246,16 @@ function Avatar({ src, letter, onPick, className = "" }) {
  */
 export function useChromeColor() {}
 
+/** 状态栏色带（index.html 里的 #sb-band）跟着皮肤走：只改 CSS 变量，不碰任何 meta。 */
+const SKIN_TOP = { glass: "#a9c9ee", cream: "#eceee8", dark: "#1e2433" };
+function useStatusBand(color) {
+  useEffect(() => {
+    const el = document.documentElement;
+    el.style.setProperty("--sb-band", color);
+    return () => el.style.removeProperty("--sb-band");
+  }, [color]);
+}
+
 /* ---------------------------------------------------------------- 主屏幕 */
 
 const DOCK = ["world", "preset", "memories", "companion"];
@@ -258,6 +268,7 @@ export function PhoneHome({ nav, config, onOpen, onExit }) {
   const [page, setPage] = useState(0);
   const coverRef = useRef(null);
 
+  useStatusBand(SKIN_TOP[theme.skin] ?? SKIN_TOP.glass);
   const byId = Object.fromEntries(nav.map((n) => [n.id, n]));
   const pick = (ids) => ids.map((id) => byId[id]).filter(Boolean);
   const used = new Set([...DOCK, ...P1_MINI, "music"]);
@@ -437,7 +448,7 @@ export function ThemeCard({ Card, Button }) {
 /* ---------------------------------------------------------------- 样式 */
 
 const CSS = `
-.ph-root{position:fixed;top:0;left:0;right:0;height:var(--app-h,100dvh);z-index:35;display:flex;align-items:center;justify-content:center;overflow:hidden;
+.ph-root{position:fixed;top:var(--adj-top,0px);left:0;right:0;height:calc(var(--app-h,100dvh) - var(--adj-top,0px) + var(--adj-bottom,0px));z-index:35;display:flex;align-items:center;justify-content:center;overflow:hidden;
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;animation:phIn .28s ease both}
 @keyframes phIn{from{opacity:0;transform:scale(1.04)}to{opacity:1;transform:none}}
@@ -449,7 +460,7 @@ const CSS = `
 .ph-device{position:relative;width:min(100vw,414px);height:min(var(--app-h,100dvh),880px);border-radius:48px;overflow:hidden;display:flex;flex-direction:column;color:var(--ph-fg);
   background-image:var(--wallpaper-image,none),var(--ph-bg);background-size:cover;background-position:center;
   box-shadow:0 0 0 9px #0b0b0d,0 0 0 11px #404046,0 34px 90px rgba(0,0,0,.5)}
-@media (max-width:520px){.ph-device{width:100vw;height:var(--app-h,100dvh);border-radius:0;box-shadow:none}.ph-island{display:none}.ph-time,.ph-net,.ph-bat{display:none}.ph-status{justify-content:flex-end}}
+@media (max-width:520px){.ph-device{width:100vw;height:100%;border-radius:0;box-shadow:none}.ph-island{display:none}.ph-time,.ph-net,.ph-bat{display:none}.ph-status{justify-content:flex-end}}
 .ph-island{position:absolute;z-index:4;top:11px;left:50%;transform:translateX(-50%);width:112px;height:32px;border-radius:20px;background:#09090b}
 .ph-status{position:relative;z-index:3;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:max(16px,env(safe-area-inset-top)) 30px 6px;font-size:15px;font-weight:650;text-shadow:var(--ph-ts)}
 .ph-sys{display:flex;align-items:center;gap:8px;font-size:13px}

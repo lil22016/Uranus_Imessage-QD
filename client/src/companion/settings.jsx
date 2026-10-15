@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cx } from "./api.js";
 import { Field } from "./editors.jsx";
+import { ADJ_LIMITS, readAdj, saveAdj } from "./screenadj.js";
 
 const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
@@ -509,7 +510,51 @@ function FreshStart({ ctx }) {
 }
 
 /** 显示/排错：把这台手机上页面实际拿到的尺寸、安全区、底栏位置列出来，截图发给我就能定位问题 */
-function Diag({ onFill }) {
+/**
+ * 屏幕位置微调：两条滑杆，拖的时候整页实时跟着动。只存在这台设备上。
+ * 顶部：整页往下挪，挪出来的那一截是实心色带（盖住 iOS 26 顶上那层模糊）。
+ * 底部：底边往下伸（正）/ 往上缩（负），底栏离屏幕底还有一截时往正数拖。
+ */
+function ScreenAdjust() {
+  const [v, setV] = useState(readAdj);
+  const set = (k, n) => setV(saveAdj({ ...v, [k]: n }));
+  const row = (k, label, hint) => {
+    const [lo, hi] = ADJ_LIMITS[k];
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 4 }}>
+          <span>{label}</span>
+          <span className="row" style={{ gap: 6 }}>
+            <button type="button" className="pill" style={{ padding: "2px 10px" }} onClick={() => set(k, v[k] - 1)} aria-label={`${label} 减 1`}>−</button>
+            <span style={{ minWidth: 52, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{v[k]} px</span>
+            <button type="button" className="pill" style={{ padding: "2px 10px" }} onClick={() => set(k, v[k] + 1)} aria-label={`${label} 加 1`}>+</button>
+          </span>
+        </div>
+        <input
+          type="range"
+          min={lo}
+          max={hi}
+          step="1"
+          value={v[k]}
+          onChange={(e) => set(k, Number(e.target.value))}
+          style={{ width: "100%", padding: 0, border: 0, background: "transparent", accentColor: "#d6c2a8", height: 28 }}
+          aria-label={label}
+        />
+        <div className="meta" style={{ fontSize: 12 }}>{hint}</div>
+      </div>
+    );
+  };
+  return (
+    <div className="field" style={{ marginTop: 8 }}>
+      <div style={{ fontWeight: 600, marginBottom: 8 }}>屏幕位置微调（只存在这台设备上，拖动立刻生效）</div>
+      {row("top", "顶部下移", "整页往下挪；挪出来的那一截是实心色带，可以盖住顶上那层模糊")}
+      {row("bottom", "底部延伸", "正数 = 底边往下伸（底栏下面还空一截时往右拖）；负数 = 往上缩")}
+      <button type="button" className="pill" onClick={() => setV(saveAdj({ top: 0, bottom: 0 }))}>恢复默认（0 / 0）</button>
+    </div>
+  );
+}
+
+function Diag() {
   const ref = useRef(null);
   const [t, setT] = useState("");
   const read = () => {
@@ -548,8 +593,6 @@ function Diag({ onFill }) {
     <div ref={ref} className="field" style={{ marginTop: 8 }}>
       <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
         <button type="button" className="pill" onClick={read}>诊断（读取这台手机的尺寸）</button>
-        <button type="button" className="pill" onClick={() => onFill(screen.height)}>页面高度 = 屏幕高度（{screen.height}）</button>
-        <button type="button" className="pill" onClick={() => onFill("")}>页面高度 = 自动</button>
       </div>
       {t && <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, marginTop: 8, opacity: .85 }}>{t}</pre>}
     </div>
@@ -843,10 +886,8 @@ export function SettingsPage({ ctx }) {
         <Field label="底栏下方留白（px）：留空 = 自动；填 0 = 贴着屏幕最底，数字越大离底部越远">
           <input type="number" min="0" max="80" placeholder="自动" value={ap.tabPad ?? ""} onChange={(e) => up(["appearance", "tabPad"], e.target.value === "" ? "" : Number(e.target.value))} />
         </Field>
-        <Field label="页面高度（px）：留空 = 自动；底栏离屏幕底部还有一截时，点下面「诊断」里的「页面高度 = 屏幕高度」">
-          <input type="number" min="300" max="3000" placeholder="自动" value={ap.pageH ?? ""} onChange={(e) => up(["appearance", "pageH"], e.target.value === "" ? "" : Number(e.target.value))} />
-        </Field>
-        <Diag onFill={(h) => up(["appearance", "pageH"], h)} />
+        <ScreenAdjust />
+        <Diag />
         <Field label="自定义 CSS（只在 Companion 里生效；会过滤 @import 和外部图片）">
           <textarea style={{ minHeight: 120, fontFamily: "ui-monospace,monospace", fontSize: 12 }} value={ap.css || ""} onChange={(e) => up(["appearance", "css"], e.target.value)} placeholder={".act .atitle { letter-spacing: .02em; }"} />
         </Field>
@@ -854,7 +895,7 @@ export function SettingsPage({ ctx }) {
 
       <SessionTools ctx={ctx} />
       <FreshStart ctx={ctx} />
-      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b17 · 整理卡片在「基本」下面</div>
+      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b19 · 整理卡片在「基本」下面</div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
         <button type="button" className="pill solid" disabled={busy} onClick={() => save()}>
           {busy ? "保存中…" : "保存设置"}
