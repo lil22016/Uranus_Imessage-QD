@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, Headphones, Heart, ListMusic, MessageCircle, Minus, Pause, Play, Plus, Send, Settings2, SkipBack, SkipForward, ThumbsDown, X } from "lucide-react";
+import { Check, ChevronLeft, Headphones, Heart, ListMusic, Menu, MessageCircle, Minus, Pause, Play, Plus, Repeat1, Send, Settings2, Shuffle, SkipBack, SkipForward, ThumbsDown, X } from "lucide-react";
 import { useConfig } from "../store.jsx";
 import { cx } from "../companion/api.js";
 import { useTheme } from "../phonehome.jsx";
 import {
+  addToList,
   clearChat,
+  createList,
+  loadLiked,
   getLocal,
   https,
   ne,
@@ -19,8 +22,9 @@ import {
   sendChat,
   setLocal,
   setMcfgLocal,
-  setMine,
+  setMode,
   toggle,
+  toggleLike,
   useLocal,
   useMusic,
 } from "../musicstore.js";
@@ -43,8 +47,8 @@ export function MusicPanel({ onExit }) {
   const theme = useTheme();
   const L = useLocal();
   const s = useMusic();
-  const { api = "", cookie = "", mine = {} } = L;
-  const { queue, idx, playing, pos, dur, lrc, att, mcfg, profiles, chat, bubble, names, toast } = s;
+  const { api = "", cookie = "", mode = "seq" } = L;
+  const { queue, idx, playing, pos, dur, lrc, att, mcfg, profiles, chat, bubble, names, toast, liked } = s;
   const song = queue[idx] || null;
 
   const [tab, setTab] = useState("rec"); // rec | lists | chat
@@ -54,6 +58,7 @@ export function MusicPanel({ onExit }) {
   const [loadingTracks, setLoadingTracks] = useState(false);
   const [showLrc, setShowLrc] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const [menu, setMenu] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -62,7 +67,8 @@ export function MusicPanel({ onExit }) {
   }, []);
 
   const hisAtt = song ? att.find((a) => a.song?.id === song.id && a.by === "character")?.attitude : "";
-  const myAtt = song ? mine[song.id] : "";
+  const iLike = song ? liked.includes(song.id) : false;
+  const myLists = lists.filter((pl) => String(pl.creator?.userId ?? pl.userId) === String(L.uid));
   const needLogin = !!api && !cookie;
 
   /* ---- 列表 ---- */
@@ -113,6 +119,7 @@ export function MusicPanel({ onExit }) {
     if (api && cookie) {
       loadLists();
       loadRec();
+      loadLiked();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, cookie]);
@@ -166,22 +173,21 @@ export function MusicPanel({ onExit }) {
       </header>
 
       <div className="mu-body">
-        {/* 两个头像 + 耳机线 */}
+        {/* 两个头像 + 耳机线：两根线从各自头像垂下来，在中间交缠成一股 */}
         <div className="mu-pair">
-          <div className="mu-who">
+          <div className="mu-who l">
             {bubble && <div className="mu-say">{bubble}</div>}
             <Avatar src={theme.avatarRole} label={names.c} />
-            <div className="mu-att">{hisAtt === "like" ? <Heart size={13} fill="currentColor" /> : hisAtt === "dislike" ? <ThumbsDown size={13} /> : null}</div>
+            {hisAtt && <span className="mu-att">{hisAtt === "like" ? <Heart size={12} fill="currentColor" /> : <ThumbsDown size={12} />}</span>}
           </div>
-          <svg className={`mu-cable ${playing ? "on" : ""}`} viewBox="0 0 160 50" preserveAspectRatio="none" aria-hidden>
-            <path d="M2 18 C 30 58, 60 58, 80 40 C 100 58, 130 58, 158 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-            <circle cx="3" cy="17" r="3.2" fill="currentColor" />
-            <circle cx="157" cy="17" r="3.2" fill="currentColor" />
-          </svg>
-          <div className="mu-who">
+          <div className="mu-who r">
             <Avatar src={theme.avatarUser} label={names.u || "我"} />
-            <div className="mu-att">{myAtt === "like" ? <Heart size={13} fill="currentColor" /> : myAtt === "dislike" ? <ThumbsDown size={13} /> : null}</div>
+            {iLike && <span className="mu-att"><Heart size={12} fill="currentColor" /></span>}
           </div>
+          <svg className={`mu-cable ${playing ? "on" : ""}`} viewBox="0 0 260 150" aria-hidden>
+            <path className="c1" d="M4 40 C4 64 30 80 72 91 C102 99 122 104 130 112 C141 124 126 134 120 146" />
+            <path className="c2" d="M256 40 C256 64 230 80 188 91 C158 99 138 104 130 112 C119 124 134 134 140 146" />
+          </svg>
         </div>
 
         {/* 封面 / 歌词 */}
@@ -216,8 +222,8 @@ export function MusicPanel({ onExit }) {
                 <span>{fmt(dur)}</span>
               </div>
               <div className="mu-ctl">
-                <button type="button" className={`mu-ico ${myAtt === "dislike" ? "hot" : ""}`} onClick={() => setMine("dislike")} aria-label="不喜欢">
-                  <ThumbsDown size={19} strokeWidth={1.6} />
+                <button type="button" className="mu-ico" onClick={() => setMenu(true)} aria-label="播放方式和加入歌单">
+                  <Menu size={20} strokeWidth={1.7} />
                 </button>
                 <button type="button" className="mu-ico" onClick={prev} aria-label="上一首">
                   <SkipBack size={22} strokeWidth={1.6} />
@@ -228,8 +234,8 @@ export function MusicPanel({ onExit }) {
                 <button type="button" className="mu-ico" onClick={next} aria-label="下一首">
                   <SkipForward size={22} strokeWidth={1.6} />
                 </button>
-                <button type="button" className={`mu-ico ${myAtt === "like" ? "hot" : ""}`} onClick={() => setMine("like")} aria-label="喜欢">
-                  <Heart size={19} strokeWidth={1.6} fill={myAtt === "like" ? "currentColor" : "none"} />
+                <button type="button" className={`mu-ico ${iLike ? "hot" : ""}`} onClick={toggleLike} aria-label={iLike ? "取消喜欢" : "喜欢（加入网易云我喜欢的音乐）"}>
+                  <Heart size={20} strokeWidth={1.6} fill={iLike ? "currentColor" : "none"} />
                 </button>
               </div>
             </>
@@ -294,8 +300,7 @@ export function MusicPanel({ onExit }) {
                       <b>{t.name}</b>
                       <i>{t.artist}</i>
                     </span>
-                    {mine[t.id] === "like" && <Heart size={13} fill="currentColor" className="mu-mark" />}
-                    {mine[t.id] === "dislike" && <ThumbsDown size={13} className="mu-mark" />}
+                    {liked.includes(t.id) && <Heart size={13} fill="currentColor" className="mu-mark" />}
                   </button>
                 ))}
                 {!loadingTracks && !tracks.length && <div className="mu-empty">{api && cookie ? "这里还没有歌" : "登录后这里会出现每日推荐和你的歌单"}</div>}
@@ -332,7 +337,8 @@ export function MusicPanel({ onExit }) {
       </div>
 
       {toast && <div className="mu-toast">{toast}</div>}
-      {sheet && <Settings onClose={() => setSheet(false)} L={L} mcfg={mcfg} profiles={profiles} providers={config?.providers ?? []} />}
+      {menu && <TrackMenu onClose={() => setMenu(false)} mode={mode} lists={myLists} song={song} />}
+      {sheet && <Settings onClose={() => setSheet(false)} L={L} mcfg={mcfg} profiles={profiles} providers={config?.providers ?? []} myLists={myLists} onNewList={(pl) => setLists((x) => [{ ...pl, creator: { userId: L.uid } }, ...x])} />}
     </div>
   );
 }
@@ -425,9 +431,57 @@ function Chance({ label, value, onLive, onSave }) {
   );
 }
 
+/* ------------------------------------------------------------ 三条杠：播放方式 / 加入歌单 */
+
+function TrackMenu({ onClose, mode, lists, song }) {
+  const modes = [
+    ["seq", "顺序播放", ListMusic],
+    ["shuffle", "随机播放", Shuffle],
+    ["one", "单曲循环", Repeat1],
+  ];
+  return (
+    <div className="mu-over" onClick={onClose}>
+      <div className="mu-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="mu-top" style={{ padding: 0 }}>
+          <b>播放方式</b>
+          <button type="button" className="mu-ico" onClick={onClose} aria-label="关闭">
+            <X size={18} />
+          </button>
+        </div>
+        {modes.map(([id, label, I]) => (
+          <button key={id} type="button" className={`mu-opt ${mode === id ? "on" : ""}`} onClick={() => setMode(id)}>
+            <I size={18} strokeWidth={1.6} />
+            <span>{label}</span>
+            {mode === id && <Check size={16} />}
+          </button>
+        ))}
+        <h4>把「{song?.name || "这首歌"}」加入歌单</h4>
+        {!song && <p className="mu-hint">先放一首歌。</p>}
+        {song && !lists.length && <p className="mu-hint">还没读到你自己创建的歌单（要先登录）。</p>}
+        {song &&
+          lists.map((pl) => (
+            <button
+              key={pl.id}
+              type="button"
+              className="mu-opt"
+              onClick={async () => {
+                if (await addToList(pl.id, song)) onClose();
+              }}
+            >
+              <img src={https(pl.coverImgUrl) + "?param=60y60"} alt="" className="mu-optimg" />
+              <span>{pl.name}</span>
+              <i>{pl.trackCount} 首</i>
+            </button>
+          ))}
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------ 设置 */
 
-function Settings({ onClose, L, mcfg, profiles, providers }) {
+function Settings({ onClose, L, mcfg, profiles, providers, myLists, onNewList }) {
+  const [newName, setNewName] = useState("");
   const [url, setUrl] = useState(L.api || "");
   const [qr, setQr] = useState("");
   const [qrMsg, setQrMsg] = useState("");
@@ -516,6 +570,44 @@ function Settings({ onClose, L, mcfg, profiles, providers }) {
         )}
         {!qr && qrMsg && <p className="mu-hint">{qrMsg}</p>}
 
+        <h4>Ta 点的爱心放到哪个歌单</h4>
+        <select
+          value={L.likeListId || ""}
+          onChange={(e) => {
+            const pl = myLists.find((x) => String(x.id) === e.target.value);
+            setLocal({ likeListId: pl ? String(pl.id) : "", likeListName: pl?.name || "" });
+          }}
+        >
+          <option value="">不加到网易云（只在这里表达喜欢）</option>
+          {myLists.map((pl) => (
+            <option key={pl.id} value={pl.id}>
+              {pl.name}
+            </option>
+          ))}
+        </select>
+        <div className="mu-row2">
+          <input style={{ flex: 1 }} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="或者新建一个歌单，名字…" />
+          <button
+            type="button"
+            className="mu-pill"
+            onClick={async () => {
+              if (!newName.trim()) return;
+              try {
+                const pl = await createList(newName.trim());
+                onNewList(pl);
+                setLocal({ likeListId: String(pl.id), likeListName: pl.name });
+                setNewName("");
+                say(`已新建「${pl.name}」并设为他的歌单`);
+              } catch (e) {
+                say(e.message);
+              }
+            }}
+          >
+            新建
+          </button>
+        </div>
+        <p className="mu-hint">Ta 点爱心时，这首歌会被加进上面选的歌单。点踩只在这里显示，不影响网易云；但踩过的歌，Ta 之后更容易想跳过。</p>
+
         <h4>Ta 用哪个模型说话</h4>
         {!mcfg ? (
           <p className="mu-hint">还没连上 Companion，这一块先不能设。</p>
@@ -583,15 +675,18 @@ const CSS = `
 .mu-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 16px calc(28px + env(safe-area-inset-bottom));max-width:520px;width:100%;margin:0 auto;-webkit-overflow-scrolling:touch}
 .mu-ico{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;color:var(--dim)}
 .mu-ico:hover,.mu-ico.hot{color:var(--ac)}
-.mu-pair{display:flex;align-items:center;justify-content:center;gap:0;margin:46px 0 10px}
-.mu-who{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;width:76px}
+.mu-pair{position:relative;width:260px;max-width:100%;height:150px;margin:46px auto 4px}
+.mu-who{position:absolute;top:0;width:64px}
+.mu-who.l{left:0}.mu-who.r{right:0}
 .mu-av{width:64px;height:64px;border-radius:50%;overflow:hidden;border:1px solid var(--l);background:#ffffff14;display:grid;place-items:center;font-family:Georgia,serif;font-size:22px}
 .mu-av img{width:100%;height:100%;object-fit:cover}
-.mu-att{height:16px;color:var(--ac);display:flex}
-.mu-cable{flex:1;max-width:150px;height:46px;overflow:visible;color:var(--dim);margin-top:-14px;transition:color .3s}
+.mu-att{position:absolute;top:-5px;right:-5px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#101117;border:1px solid var(--ac);color:var(--ac)}
+.mu-cable{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;color:var(--dim);pointer-events:none;transition:color .4s}
+.mu-cable path{fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
 .mu-cable.on{color:var(--ac)}
-.mu-cable.on path{animation:mucab 2.4s ease-in-out infinite}
-@keyframes mucab{0%,100%{transform:translateY(0)}50%{transform:translateY(2.5px)}}
+.mu-cable.on path.c1{animation:mucab 2.4s ease-in-out infinite}
+.mu-cable.on path.c2{animation:mucab 2.4s ease-in-out -1.2s infinite}
+@keyframes mucab{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
 .mu-say{position:absolute;bottom:100%;left:0;margin-bottom:8px;width:max-content;max-width:210px;padding:8px 11px;border-radius:14px 14px 14px 3px;background:#ffffff20;border:1px solid var(--l);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:13px;line-height:1.45;z-index:2;animation:musay .25s ease}
 @keyframes musay{from{opacity:0}to{opacity:1}}
 .mu-stage{display:flex;flex-direction:column;align-items:center;margin-top:8px}
@@ -639,6 +734,12 @@ const CSS = `
 .mu-pill{padding:8px 16px;border-radius:99px;border:1px solid var(--l)!important;font-size:13px}
 .mu-pill.solid{background:var(--ac)!important;color:#1c1a18!important;border-color:transparent!important}
 .mu-hint{font-size:12px;color:var(--dim);line-height:1.55;margin:6px 0}
+.mu-opt{display:flex;align-items:center;gap:12px;width:100%;padding:12px 6px;border-radius:12px;text-align:left;font-size:15px}
+.mu-opt span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mu-opt i{font-style:normal;font-size:12px;color:var(--dim)}
+.mu-opt.on{color:var(--ac)}
+.mu-opt:active{background:#ffffff12!important}
+.mu-optimg{width:36px;height:36px;border-radius:7px;object-fit:cover}
 .mu-qr{display:flex;flex-direction:column;align-items:center;gap:6px;margin:8px 0}
 .mu-qr img{width:170px;height:170px;background:#fff;border-radius:10px;padding:6px}
 .mu-qr span{font-size:12.5px;color:var(--dim)}

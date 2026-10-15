@@ -89,6 +89,7 @@ let st = {
   bubble: "",
   names: { c: "Loki", u: "" },
   toast: "",
+  liked: [], // 我在网易云「喜欢的音乐」里的歌曲 id
 };
 const subs = new Set();
 const emit = () => subs.forEach((f) => f());
@@ -137,7 +138,12 @@ if (audio) {
     updatePosition();
   });
   audio.addEventListener("loadedmetadata", () => set({ dur: audio.duration || 0 }));
-  audio.addEventListener("ended", () => next());
+  audio.addEventListener("ended", () => {
+    if (local.mode === "one" && cur()) {
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+    } else next();
+  });
   audio.addEventListener("error", () => say("这首加载失败了"));
 }
 
@@ -174,13 +180,28 @@ export async function play(list, i) {
     .then((d) => cur()?.id === s.id && set({ lrc: parseLrc(d.lrc?.lyric) }))
     .catch(() => {});
 }
+/* 播放顺序：seq 顺序 / shuffle 随机 / one 单曲循环（循环只管自然播完；手动点下一首照常切歌） */
+let history = [];
+export function setMode(m) {
+  setLocal({ mode: m });
+}
 export function next() {
   if (!st.queue.length) return;
-  play(st.queue, (st.idx + 1) % st.queue.length);
+  const n = st.queue.length;
+  let i = (st.idx + 1) % n;
+  if (local.mode === "shuffle" && n > 1) {
+    do i = Math.floor(Math.random() * n);
+    while (i === st.idx);
+  }
+  if (st.idx >= 0) history.push(st.idx);
+  history = history.slice(-50);
+  play(st.queue, i);
 }
 export function prev() {
   if (!st.queue.length) return;
-  play(st.queue, (st.idx - 1 + st.queue.length) % st.queue.length);
+  if (audio && audio.currentTime > 4) return seek(0);
+  const i = local.mode === "shuffle" && history.length ? history.pop() : (st.idx - 1 + st.queue.length) % st.queue.length;
+  play(st.queue, i);
 }
 export function toggle() {
   if (!audio?.src) return;
@@ -226,15 +247,63 @@ function updatePosition() {
   }
 }
 
-/* ------------------------------------------------------------ 我的 ♥ / 👎（只存本机） */
+/* ------------------------------------------------------------ 我的 ♥：真的加到网易云「喜欢的音乐」 */
 
-export function setMine(v) {
+export async function loadLiked() {
+  if (!local.api || !local.cookie) return;
+  try {
+    let uid = local.uid;
+    if (!uid) {
+      const r = await ne("/login/status");
+      const p = r.data?.profile || r.profile;
+      if (!p) return;
+      uid = p.userId;
+      setLocal({ uid, nick: p.nickname });
+    }
+    const d = await ne("/likelist", { uid });
+    if (Array.isArray(d.ids)) set({ liked: d.ids.map(String) });
+  } catch {
+    /* 拿不到就当还没喜欢过，点爱心时再试 */
+  }
+}
+export async function toggleLike() {
   const s = cur();
   if (!s) return;
-  const m = { ...(local.mine || {}) };
-  if (m[s.id] === v) delete m[s.id];
-  else m[s.id] = v;
-  setLocal({ mine: m });
+  const on = !st.liked.includes(s.id);
+  set({ liked: on ? [...st.liked, s.id] : st.liked.filter((x) => x !== s.id) }); // 先画出来，失败再改回
+  try {
+    const d = await ne("/like", { id: s.id, like: on ? "true" : "false" });
+    if (d.code !== 200) throw new Error(d.message || d.msg || "网易云没有接受（可能没登录或接口不支持）");
+    say(on ? "已加入「我喜欢的音乐」" : "已取消喜欢");
+  } catch (e) {
+    set({ liked: on ? st.liked.filter((x) => x !== s.id) : [...st.liked, s.id] });
+    say(e.message);
+  }
+}
+/** 把歌加进某个歌单（我的 / Loki 的）。返回 true 表示成功或已经在里面。 */
+export async function addToList(pid, song = cur(), quiet = false) {
+  if (!song || !pid) return false;
+  try {
+    const d = await ne("/playlist/tracks", { op: "add", pid, tracks: song.id });
+    const code = d.body?.code ?? d.code;
+    if (code === 200) {
+      if (!quiet) say("已加入歌单");
+      return true;
+    }
+    if (code === 502) {
+      if (!quiet) say("这首已经在那个歌单里了");
+      return true;
+    }
+    throw new Error(d.body?.message || d.body?.msg || d.message || d.msg || "加入歌单没成功");
+  } catch (e) {
+    if (!quiet) say(e.message);
+    return false;
+  }
+}
+export async function createList(name) {
+  const d = await ne("/playlist/create", { name, privacy: "10" });
+  if (d.code !== 200 || !d.id) throw new Error(d.message || d.msg || "新建歌单没成功");
+  return { id: d.id, name };
 }
 
 /* ------------------------------------------------------------ 角色那边（Companion） */
@@ -312,25 +381,31 @@ function scheduleRoll() {
     return;
   }
   rolled = s.id;
+  // 他以前表过态的歌：踩过 → 很可能想跳过（70%，而且更早开口）；喜欢过 → 不会想跳
+  const prior = st.att.find((a) => a.song?.id === s.id && a.by === "character")?.attitude || "";
   const maxAt = Math.max(12, Math.min(70, (st.dur || 120) * 0.6));
-  const delay = (8 + Math.random() * (maxAt - 8)) * 1000;
+  const delay = (prior === "dislike" ? 3 + Math.random() * 5 : 8 + Math.random() * (maxAt - 8)) * 1000;
   clearTimeout(rollTimer);
   rollTimer = setTimeout(async () => {
     const c = st.mcfg;
     if (!c || cur()?.id !== s.id || audio.paused) return;
     const wantText = Math.random() < c.commentChance;
     const wantAtt = Math.random() < c.attitudeChance;
-    const wantSkip = Math.random() < c.skipChance;
+    const wantSkip = prior === "dislike" ? Math.random() < 0.7 : prior === "like" ? false : Math.random() < c.skipChance;
     if (!wantText && !wantAtt && !wantSkip) return;
     try {
       const d = await cx("/music/react", {
         method: "POST",
-        body: { song: brief(s), lyricLine: lineNow(), position: audio.currentTime, allowSkip: wantSkip, wantText: wantText || wantSkip, wantAttitude: wantAtt },
+        body: { song: brief(s), lyricLine: lineNow(), position: audio.currentTime, allowSkip: wantSkip, priorAttitude: prior, wantText: wantText || wantSkip, wantAttitude: wantAtt },
       });
       set({ att: d.attitudes || st.att });
       if (d.text) {
         set({ chat: [...st.chat, { id: "r" + Date.now(), role: "character", text: d.text, kind: "react" }] });
         showBubble(d.text);
+      }
+      // 他点了爱心：如果在设置里选了歌单，就把这首加进去（网易云上能看到）；没选就只是在这里表达
+      if (d.attitude === "like" && prior !== "like" && local.likeListId) {
+        addToList(local.likeListId, s, true).then((ok) => ok && say(`${st.names.c} 把《${s.name}》加进了「${local.likeListName || "他的歌单"}」`));
       }
       if (d.skip && cur()?.id === s.id) setTimeout(() => cur()?.id === s.id && next(), 3000);
     } catch (e) {
