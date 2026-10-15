@@ -38,6 +38,7 @@ import { MusicPanel } from "./panels/music.jsx";
 import { HomeBar, HomeButton, PhoneAppStyle, PhoneHome, setTheme, useTheme } from "./phonehome.jsx";
 import { CustomCssPanel, useCustomCss } from "./customcss.jsx";
 import { CompanionPanel } from "./panels/companion.jsx";
+import { SettingsAppPanel } from "./panels/settingsapp.jsx";
 import { PhonePanel } from "./panels/phone.jsx";
 import { SetupButton, SetupWizard, useAutoOpenSetup } from "./panels/setup.jsx";
 import { GlobalSearch } from "./search.jsx";
@@ -294,6 +295,9 @@ export function SectionList({ section, groups, itemId, onPick, onAnchor }) {
   );
 }
 
+/** 整屏打开的 App（不套控制台的顶栏 / 侧栏），退出时回到进来之前的分区。 */
+const FULLSCREEN_TABS = ["companion", "music", "settings"];
+
 export function AppShell() {
   const { config, loadError } = useConfig();
   // 自定义 CSS（控制台 / 查手机）：登录进来就注入，网址带 ?nocss 时跳过
@@ -302,7 +306,7 @@ export function AppShell() {
   // Companion 是整屏的，退出时要回到进来之前的分区
   const prevTab = useRef("role");
   useEffect(() => {
-    if (tab !== "companion" && tab !== "music") prevTab.current = tab;
+    if (!FULLSCREEN_TABS.includes(tab)) prevTab.current = tab;
   }, [tab]);
   // 「小手机」主题：开着的时候先显示主屏幕，点图标才进功能页；回主屏幕靠导航轨 / 顶栏上的小房子
   const theme = useTheme();
@@ -851,14 +855,16 @@ export function AppShell() {
           它自己带标题和底栏，等于「Uranus 里的 Companion 网站」。
           左上角返回键：手机主题回主屏幕，经典主题回到进来之前的分区。
         */}
-        {(tab === "companion" || tab === "music") && (
+        {FULLSCREEN_TABS.includes(tab) && (
           <div style={{ position: "fixed", top: "var(--adj-top, 0px)", left: 0, right: 0, height: "calc(var(--app-h, 100dvh) - var(--adj-top, 0px) + var(--adj-bottom, 0px))", zIndex: 45, background: "#101117" }}>
             {(() => {
               const exit = () => {
                 goto(prevTab.current || "role");
                 if (phoneMode) setHome(true);
               };
-              return tab === "companion" ? <CompanionPanel onExit={exit} /> : <MusicPanel onExit={exit} />;
+              if (tab === "companion") return <CompanionPanel onExit={exit} />;
+              if (tab === "settings") return <SettingsAppPanel onExit={exit} wallpaper={wallpaper} />;
+              return <MusicPanel onExit={exit} />;
             })()}
           </div>
         )}

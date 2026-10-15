@@ -14,12 +14,12 @@ import { Image as ImageIcon, Trash2, Upload } from "lucide-react";
 import { Button, Modal, Slider } from "../ui.jsx";
 
 /** 遮罩最低 0.2，和后端 wallpaper.js 的 VEIL_MIN 对齐。再淡下去正文就糊了。 */
-const VEIL_MIN = 0.2;
+export const VEIL_MIN = 0.2;
 
 /** 单张壁纸的体积上限，和识图测试传图那边一个数。 */
-const MAX_BYTES = 8 * 1024 * 1024;
+export const MAX_BYTES = 8 * 1024 * 1024;
 
-const fileUrl = (file) => `/api/wallpaper/file/${encodeURIComponent(file)}`;
+export const fileUrl = (file) => `/api/wallpaper/file/${encodeURIComponent(file)}`;
 
 /**
  * 壁纸的全部状态。整个应用只该调一次（在 AppShell 里），

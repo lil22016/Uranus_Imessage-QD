@@ -11,6 +11,7 @@ import {
   MessageSquareText,
   MessagesSquare,
   Server,
+  Settings,
   Settings2,
   SlidersHorizontal,
   Smartphone,
@@ -369,6 +370,17 @@ export const NAV = [
     // 「通话」只在用了 FaceTime 那套之后才渲染（见 console.jsx:CallPanel），
     // 锚点照列 —— 没渲染时点它只是滚不到，比「用了却没有锚点」强
     anchors: ["运行控制台", "账号", "服务控制", "通话", "备份 / 恢复", "云备份", "自定义 CSS"],
+  },
+  {
+    id: "settings",
+    label: "设置",
+    icon: Settings,
+    /*
+     * 作用于整个 Uranus 的设置：界面主题、壁纸、屏幕位置微调、诊断（panels/settingsapp.jsx）。
+     * 和 Companion / 音乐一样整屏打开；小手机主屏幕上它在第二屏。
+     */
+    desc: "整个 Uranus 的设置：界面主题、壁纸、屏幕位置微调、诊断。",
+    anchors: [],
   },
 ];
 

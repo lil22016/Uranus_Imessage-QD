@@ -107,7 +107,12 @@ function Icon({ d }) {
  * 自带顶部标题和底部「日程 / 日记 / 动态 / 设置」切换，不依赖外面有没有侧栏。
  * onExit：有的话左上角出现返回键（Uranus 里回主屏幕；网站里不传就没有）。
  */
-export function CompanionApp({ page, providers = [], standalone = false, onExit }) {
+/*
+ * deviceSettings：设置页里要不要画「屏幕位置微调 / 诊断」。
+ * Companion 网站传 true（它没有别的设置入口）；Uranus 里不传 —— 那些作用于整个 Uranus 的东西
+ * 在 Uranus 主屏幕的「设置」App 里，不塞进 Companion 的设置。
+ */
+export function CompanionApp({ page, providers = [], standalone = false, deviceSettings = false, onExit }) {
   const [tabPage, setTabPage] = useState(readPage);
   const { data, error, load } = useCompanion();
   const [date, setDate] = useState(null);
@@ -148,6 +153,7 @@ export function CompanionApp({ page, providers = [], standalone = false, onExit 
 
   const ctx = {
     providers,
+    deviceSettings,
     data,
     load,
     toast,

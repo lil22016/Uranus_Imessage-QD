@@ -3,7 +3,6 @@ import { roleLabel } from "../labels.js";
 import { useSection } from "../section.jsx";
 import { api, useConfig } from "../store.jsx";
 import { Button, Card, ResultNote } from "../ui.jsx";
-import { ThemeCard } from "../phonehome.jsx";
 import { IPhone } from "./phoneos.jsx";
 import { SettingsApp } from "./phonesettings.jsx";
 
@@ -121,7 +120,6 @@ export function PhonePanel() {
   if (!itemId || !role) {
     return (
       <>
-        <ThemeCard Card={Card} Button={Button} />
         <Card title="查手机" desc="左边挑一个角色，翻翻 TA 自己的手机。">
           <p className="text-meta leading-relaxed text-ink-faint">
             这里的东西全是模型按人设、记忆和最近的聊天虚构出来的、角色自己手机里的内容 —— 和「查岗」（看你的真屏幕）不是一回事。
@@ -134,7 +132,6 @@ export function PhonePanel() {
 
   return (
     <>
-    <ThemeCard Card={Card} Button={Button} />
     <Card title={`${roleLabel(role)} 的手机`}>
       {error && (
         <div className="mb-6">
