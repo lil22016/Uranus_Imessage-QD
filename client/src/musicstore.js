@@ -136,13 +136,15 @@ if (audio) {
   audio.addEventListener("timeupdate", () => {
     set({ pos: audio.currentTime });
     updatePosition();
+    // 快放完时提前拿好下一首的地址（见 prefetchNext）
+    if (isFinite(audio.duration) && audio.duration - audio.currentTime < PREFETCH_LEAD) prefetchNext();
   });
   audio.addEventListener("loadedmetadata", () => set({ dur: audio.duration || 0 }));
   audio.addEventListener("ended", () => {
     if (local.mode === "one" && cur()) {
       audio.currentTime = 0;
-      audio.play().catch(() => {});
-    } else next();
+      audio.play().catch(() => (resumeOnVisible = true));
+    } else if (!advancePrefetched()) next();
   });
   audio.addEventListener("error", () => say("这首加载失败了"));
 }
@@ -155,10 +157,99 @@ const lineNow = () => {
   return k >= 0 ? st.lrc[k].s : "";
 };
 
+/*
+ * 熄屏 / 后台自动切歌。
+ *
+ * iOS（Safari / 主屏幕 PWA）上，一首歌 ended 之后音频会话就停了；这时候先去
+ * 网络请求下一首的地址、过一会儿才 play()，会被系统当成「没有用户操作的自动播放」
+ * 拦掉 —— 界面上已经切到下一首，但没声音，非得点亮屏幕再按一下。
+ *
+ * 所以：当前这首剩不到 PREFETCH_LEAD 秒时，就把下一首（以及它的地址）先拿好；
+ * ended 里同步换 src、立刻 play()，中间没有任何 await，系统就会放行。
+ * 网易云的地址有时效，太旧的预取不用，退回老路径。
+ */
+const PREFETCH_LEAD = 40; // 秒
+const PREFETCH_TTL = 15 * 60 * 1000;
+let pre = null; // { queue, from, idx, url, trial, at, skipped }
+let preBusy = false;
+let resumeOnVisible = false;
+
+function pickNext(from) {
+  const n = st.queue.length;
+  let i = (from + 1) % n;
+  if (local.mode === "shuffle" && n > 1) {
+    do i = Math.floor(Math.random() * n);
+    while (i === from);
+  }
+  return i;
+}
+async function prefetchNext() {
+  if (preBusy || !st.queue.length || local.mode === "one") return;
+  if (pre && pre.queue === st.queue && pre.from === st.idx) return;
+  preBusy = true;
+  const queue = st.queue, from = st.idx;
+  try {
+    const skipped = [];
+    let i = pickNext(from);
+    // 下一首放不了（版权 / 会员）就往后多看两首，免得 ended 时又落回要联网的老路径
+    for (let tries = 0; tries < 3 && i !== from; tries++) {
+      const s = queue[i];
+      const d = await ne("/song/url/v1", { id: s.id, level: "standard" });
+      const it = d.data?.[0];
+      if (st.queue !== queue || st.idx !== from) return; // 期间用户自己切歌了
+      if (it?.url) {
+        pre = { queue, from, idx: i, url: https(it.url), trial: !!it.freeTrialInfo, at: Date.now(), skipped };
+        return;
+      }
+      skipped.push(s.name);
+      i = local.mode === "shuffle" ? pickNext(i) : (i + 1) % queue.length;
+    }
+  } catch {
+    /* 预取失败无所谓，ended 时走老路径 */
+  } finally {
+    preBusy = false;
+  }
+}
+/** ended 里调用：有新鲜的预取就同步切过去并 play()，返回 true；否则返回 false 走 next()。 */
+function advancePrefetched() {
+  const p = pre;
+  pre = null;
+  if (!p || !audio || p.queue !== st.queue || p.from !== st.idx || Date.now() - p.at > PREFETCH_TTL) return false;
+  const s = p.queue[p.idx];
+  if (!s) return false;
+  if (st.idx >= 0) history.push(st.idx);
+  history = history.slice(-50);
+  clearTimeout(rollTimer);
+  audio.src = p.url;
+  const pr = audio.play();
+  set({ idx: p.idx, lrc: [], pos: 0, dur: s.dur || 0 });
+  syncSession();
+  if (p.skipped.length) say(`「${p.skipped.join("」「")}」放不了，已跳过`);
+  else if (p.trial) say("这首只有试听片段（会员歌曲）");
+  pr?.catch?.(() => (resumeOnVisible = true));
+  loadLyric(s);
+  return true;
+}
+function loadLyric(s) {
+  ne("/lyric", { id: s.id })
+    .then((d) => cur()?.id === s.id && set({ lrc: parseLrc(d.lrc?.lyric) }))
+    .catch(() => {});
+}
+// 兜底：万一后台还是被拦了，点亮屏幕回到页面时自动接着放，不用再按播放键
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && resumeOnVisible && audio?.src && audio.paused) {
+      resumeOnVisible = false;
+      audio.play().catch(() => {});
+    }
+  });
+}
+
 export async function play(list, i) {
   const s = list[i];
   if (!s || !audio) return;
   clearTimeout(rollTimer);
+  pre = null;
   set({ queue: list, idx: i, lrc: [], pos: 0, dur: s.dur || 0 });
   syncSession();
   try {
@@ -172,13 +263,14 @@ export async function play(list, i) {
     }
     if (it.freeTrialInfo) say("这首只有试听片段（会员歌曲）");
     audio.src = https(it.url);
-    await audio.play().catch(() => say("浏览器拦住了自动播放，点一下播放键"));
+    await audio.play().catch(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") resumeOnVisible = true;
+      else say("浏览器拦住了自动播放，点一下播放键");
+    });
   } catch (e) {
     say(e.message);
   }
-  ne("/lyric", { id: s.id })
-    .then((d) => cur()?.id === s.id && set({ lrc: parseLrc(d.lrc?.lyric) }))
-    .catch(() => {});
+  loadLyric(s);
 }
 /* 播放顺序：seq 顺序 / shuffle 随机 / one 单曲循环（循环只管自然播完；手动点下一首照常切歌） */
 let history = [];
@@ -187,12 +279,8 @@ export function setMode(m) {
 }
 export function next() {
   if (!st.queue.length) return;
-  const n = st.queue.length;
-  let i = (st.idx + 1) % n;
-  if (local.mode === "shuffle" && n > 1) {
-    do i = Math.floor(Math.random() * n);
-    while (i === st.idx);
-  }
+  if (advancePrefetched()) return; // 锁屏 / 耳机「下一首」也走预取，少一次等待
+  const i = pickNext(st.idx);
   if (st.idx >= 0) history.push(st.idx);
   history = history.slice(-50);
   play(st.queue, i);
