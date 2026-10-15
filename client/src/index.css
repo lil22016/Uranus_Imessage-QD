@@ -311,3 +311,32 @@ input[type="range"]::-moz-range-thumb {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * 沉浸式状态栏下的顶部安全区（只在「主屏幕 / 网页 App」里生效，普通浏览器标签页不受影响）。
+ *
+ * index.html 声明了 apple-mobile-web-app-status-bar-style=black-translucent：页面会画到
+ * 屏幕最顶、状态栏文字固定是白色。整页让出刘海那一条高度，并在那一条画深色底，
+ * 经典界面（白底）上的白色时钟才看得清；小手机主屏幕、Companion、一起听歌是整屏盖层
+ * （z-index 35 / 45，比这条高），它们自己处理顶部，用自己的颜色。
+ */
+@media (display-mode: standalone) {
+  #root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .h-viewport {
+    height: calc(100dvh - env(safe-area-inset-top, 0px));
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top, 0px);
+    background: #101117;
+    z-index: 29;
+    pointer-events: none;
+  }
+}
