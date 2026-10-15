@@ -63,9 +63,10 @@ html {
   --app-h: 100vh;
   --app-h: 100dvh;
 }
-@media (display-mode: standalone) {
+@media (display-mode: standalone), (display-mode: fullscreen) {
   :root {
     --app-h: 100vh;
+    --app-h: 100lvh;
   }
 }
 
@@ -340,22 +341,22 @@ input[type="range"]::-moz-range-thumb {
  * 它们自己用 env(safe-area-inset-top) 让位。
  * 深色条用 body::after —— body::before 是壁纸遮罩。
  */
-@media (display-mode: standalone) {
+@media (display-mode: standalone), (display-mode: fullscreen) {
   html,
   body {
-    height: 100vh;
+    height: var(--app-h);
   }
   #root {
     box-sizing: border-box;
-    height: 100vh;
+    height: var(--app-h);
     padding-top: env(safe-area-inset-top, 0px);
   }
   body::before {
     bottom: auto;
-    height: 100vh;
+    height: var(--app-h);
   }
   .h-viewport {
-    height: calc(100vh - env(safe-area-inset-top, 0px));
+    height: calc(var(--app-h) - env(safe-area-inset-top, 0px));
   }
   body::after {
     content: "";

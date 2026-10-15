@@ -237,33 +237,14 @@ function Avatar({ src, letter, onPick, className = "" }) {
   );
 }
 
-/** 让浏览器 / 系统顶部那一条的颜色跟着主题走（iOS Safari、Android Chrome 认 theme-color）。 */
-export function useChromeColor(color) {
-  useEffect(() => {
-    const head = document.head;
-    let meta = head.querySelector('meta[name="theme-color"]');
-    const made = !meta;
-    const prevColor = meta?.getAttribute("content");
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "theme-color";
-      head.appendChild(meta);
-    }
-    meta.setAttribute("content", color);
-    // 让页面能画到刘海 / 状态栏下面，内容靠 safe-area 内边距避开
-    const vp = head.querySelector('meta[name="viewport"]');
-    const prevVp = vp?.getAttribute("content");
-    if (vp && !/viewport-fit/.test(prevVp ?? "")) vp.setAttribute("content", `${prevVp},viewport-fit=cover`);
-    const rootBg = document.documentElement.style.backgroundColor;
-    document.documentElement.style.backgroundColor = color;
-    return () => {
-      if (made) meta.remove();
-      else if (prevColor != null) meta.setAttribute("content", prevColor);
-      if (vp && prevVp != null) vp.setAttribute("content", prevVp);
-      document.documentElement.style.backgroundColor = rootBg;
-    };
-  }, [color]);
-}
+/**
+ * 以前这里会在运行时改 <meta theme-color>、重写 <meta viewport>、改 <html> 底色。
+ * 实测（iOS 26 主屏幕 App）：静态的登录页能铺到状态栏下面，进了 React 页面就变回
+ * 系统画的浅色条、黑字时钟 —— 而且条的颜色跟着这里设的 theme-color 走（玻璃皮肤淡蓝 → 夜间灰）。
+ * 也就是说：只要脚本动了这几个 meta，iOS 就放弃沉浸式状态栏。
+ * 所以现在什么都不改，状态栏 / 底色全部由 index.html 静态决定。保留函数名只为不改调用方。
+ */
+export function useChromeColor() {}
 
 /* ---------------------------------------------------------------- 主屏幕 */
 
@@ -276,8 +257,6 @@ export function PhoneHome({ nav, config, onOpen, onExit }) {
   const pagerRef = useRef(null);
   const [page, setPage] = useState(0);
   const coverRef = useRef(null);
-  // 浏览器 / 系统顶栏统一用深色：浅色皮肤的顶色会让系统把状态栏画成一条浅灰白条
-  useChromeColor("#101117");
 
   const byId = Object.fromEntries(nav.map((n) => [n.id, n]));
   const pick = (ids) => ids.map((id) => byId[id]).filter(Boolean);

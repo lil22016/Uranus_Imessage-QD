@@ -12,7 +12,8 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#101117" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- 这一行（以及 theme-color / status-bar-style）运行时绝不能用脚本改：iOS 26 一改就放弃沉浸式状态栏 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <!-- 状态栏 black-translucent：页面画到状态栏下面（真正全屏），状态栏文字固定白色。
          iOS 26 在这种模式下 100dvh / 100% / position:fixed+inset:0 只到「可视区」（比屏幕矮 62），
          底下会露一截；所以全屏外壳统一用 --app-h（主屏幕 App 里是 100vh），见 index.css。

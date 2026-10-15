@@ -532,7 +532,7 @@ function Diag({ onFill }) {
       const sbMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.content || "无";
       const mf = document.querySelector('link[rel="manifest"]') ? "有" : "无";
       setT([
-        `独立 App 模式：${(window.matchMedia("(display-mode: standalone)").matches || navigator.standalone) ? "是" : "否（在浏览器里）"}`,
+        `独立 App 模式：${(window.matchMedia("(display-mode: standalone)").matches || window.matchMedia("(display-mode: fullscreen)").matches || navigator.standalone) ? "是" : "否（在浏览器里）"}`,
         `状态栏 meta：${sbMeta} · manifest：${mf} · theme-color：${tc}`,
         `高度：${units}`,
         `屏幕：${screen.width}×${screen.height}`,
@@ -854,7 +854,7 @@ export function SettingsPage({ ctx }) {
 
       <SessionTools ctx={ctx} />
       <FreshStart ctx={ctx} />
-      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b16 · 整理卡片在「基本」下面</div>
+      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b17 · 整理卡片在「基本」下面</div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
         <button type="button" className="pill solid" disabled={busy} onClick={() => save()}>
           {busy ? "保存中…" : "保存设置"}
