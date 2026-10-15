@@ -23,7 +23,7 @@ export const SKINS = [
   { id: "dark", name: "夜间" },
 ];
 const DEFAULTS = {
-  mode: "classic", // "classic" | "phone"
+  mode: "phone", // "classic" | "phone"（默认小手机；以前存过 classic 的浏览器保持原样）
   skin: "glass",
   tagline: "Collect small moments, they become the big ones.",
   quote: "keep happy",
@@ -239,7 +239,7 @@ function Avatar({ src, letter, onPick, className = "" }) {
 
 /** 让浏览器 / 系统顶部那一条的颜色跟着主题走（iOS Safari、Android Chrome 认 theme-color）。 */
 const SKIN_TOP = { glass: "#a9c9ee", cream: "#eceee8", dark: "#1e2433" };
-function useChromeColor(color) {
+export function useChromeColor(color) {
   useEffect(() => {
     const head = document.head;
     let meta = head.querySelector('meta[name="theme-color"]');

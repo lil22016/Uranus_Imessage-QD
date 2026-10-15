@@ -161,6 +161,8 @@ export function appearanceVars(a, fonts) {
   };
   put("my", a?.my);
   put("lk", a?.loki);
+  // 底栏下方留白（px）：留空 = 自动（按手机底部安全区的 40%）；填 0 就是贴底
+  if (a?.tabPad !== undefined && a?.tabPad !== "" && Number.isFinite(Number(a.tabPad))) out["--tab-pb"] = `${Math.max(0, Number(a.tabPad))}px`;
   return out;
 }
 
@@ -171,5 +173,5 @@ export function cleanCss(css) {
     .replace(/<\/?style[^>]*>/gi, "")
     .replace(/expression\s*\(/gi, "")
     .replace(/javascript:/gi, "")
-    .replace(/url\(\s*(['"]?)(?!data:|\/companion-api\/)[^)]*\)/gi, "none");
+    .replace(/url\(\s*(['"]?)(?!data:|\/companion-api\/|\/api\/)[^)]*\)/gi, "none");
 }

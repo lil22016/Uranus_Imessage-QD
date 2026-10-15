@@ -792,6 +792,9 @@ export function SettingsPage({ ctx }) {
             </button>
           </div>
         ))}
+        <Field label="底栏下方留白（px）：留空 = 自动；填 0 = 贴着屏幕最底，数字越大离底部越远">
+          <input type="number" min="0" max="80" placeholder="自动" value={ap.tabPad ?? ""} onChange={(e) => up(["appearance", "tabPad"], e.target.value === "" ? "" : Number(e.target.value))} />
+        </Field>
         <Field label="自定义 CSS（只在 Companion 里生效；会过滤 @import 和外部图片）">
           <textarea style={{ minHeight: 120, fontFamily: "ui-monospace,monospace", fontSize: 12 }} value={ap.css || ""} onChange={(e) => up(["appearance", "css"], e.target.value)} placeholder={".act .atitle { letter-spacing: .02em; }"} />
         </Field>
@@ -799,7 +802,7 @@ export function SettingsPage({ ctx }) {
 
       <SessionTools ctx={ctx} />
       <FreshStart ctx={ctx} />
-      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b10 · 整理卡片在「基本」下面</div>
+      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b12 · 整理卡片在「基本」下面</div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
         <button type="button" className="pill solid" disabled={busy} onClick={() => save()}>
           {busy ? "保存中…" : "保存设置"}
