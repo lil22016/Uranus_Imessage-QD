@@ -20,6 +20,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="Uranus" />
+    <!-- 页面底色在 JS / CSS 加载前就是深色：iOS 取状态栏、回弹区、启动白屏的颜色都看它。
+         这几行和 functions/_middleware.js 里登录页的 <head> 要保持一致（新装图标第一次打开看到的是登录页）。 -->
+    <style>html{background:#101117}</style>
     <!-- 标题 Source Serif 4（带 opsz 光学尺寸轴：72px 的 H1 自动拿 display 切割）
          正文 Inter。两个都取 400~600 的可变切片，display=swap + 系统字体兜底，
          字体没下来也不白屏。中文两个都没有字形，会回落系统 CJK。 -->

@@ -15,8 +15,10 @@
 
 const COOKIE = "uranus_front";
 const MAX_AGE = 60 * 60 * 24 * 180;
-// 加到主屏幕时系统取图标不会带 cookie，这几个公开放行（只是图标）
-const PUBLIC = /^\/(apple-touch-icon\.png|favicon[\w.-]*|uranus-mark\.png)$/;
+// 加到主屏幕时系统取图标、取 manifest 都不带 cookie（manifest 按规范是 credentials: omit），
+// 这几个公开放行（只是图标和 manifest，没有任何数据）。
+// 以前 manifest.webmanifest 不在这里：iOS 拿到的是 401 JSON，manifest 等于没加。
+const PUBLIC = /^\/(apple-touch-icon\.png|favicon[\w.-]*|uranus-mark\.png|manifest\.webmanifest)$/;
 
 const enc = new TextEncoder();
 
@@ -113,25 +115,38 @@ export async function onRequest({ request, env, next }) {
   return Response.json({ ok: false, error: "登录过期了，刷新页面重新登录。", needLogin: true }, { status: 401 });
 }
 
+/*
+ * 登录页的 <head> 必须和 client/index.html 的「主屏幕 App」那几行一致。
+ *
+ * 主屏幕 App 和 Safari 的 cookie 是分开的：新装的图标第一次打开，没有登录 cookie，
+ * 这里返回的就是这张登录页 —— iOS 读到的 status-bar-style / theme-color 来自它，
+ * 而不是 index.html。以前它是白底 + theme-color #fff + 没写 status-bar-style，
+ * 于是不管 index.html 怎么改，顶上都是系统画的白条。
+ */
 const LOGIN_HTML = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#101117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Uranus">
+<link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Uranus</title>
 <style>
-  html,body{margin:0;height:100%;background:#fff;color:#18181b;font:16px/1.5 system-ui,-apple-system,"PingFang SC",sans-serif}
+  html,body{margin:0;height:100%;background:#101117;color:#ececf1;font:16px/1.5 system-ui,-apple-system,"PingFang SC",sans-serif}
   main{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
   form{width:100%;max-width:340px;display:grid;gap:16px}
-  img{width:44px;height:44px}
-  h1{margin:8px 0 0;font:400 24px/1.25 Georgia,"Songti SC",serif}
-  p{margin:0;color:#787878;font-size:13px}
-  label{display:grid;gap:6px;font-size:13px;color:#616161}
-  input{font:inherit;font-size:16px;padding:11px 12px;border:1px solid #d4d4d8;border-radius:8px;background:#fff;color:#18181b}
-  input:focus{outline:2px solid #18181b;outline-offset:1px}
-  button{font:inherit;font-weight:500;padding:12px;border:0;border-radius:999px;background:#18181b;color:#fafafa}
+  img{width:44px;height:44px;border-radius:10px}
+  h1{margin:8px 0 0;font:400 24px/1.25 Georgia,"Songti SC",serif;color:#fff}
+  p{margin:0;color:#9a9cab;font-size:13px}
+  label{display:grid;gap:6px;font-size:13px;color:#b4b6c4}
+  input{font:inherit;font-size:16px;padding:11px 12px;border:1px solid #2c2f3d;border-radius:8px;background:#181a23;color:#fff}
+  input:focus{outline:2px solid #8ea2ff;outline-offset:1px}
+  button{font:inherit;font-weight:500;padding:12px;border:0;border-radius:999px;background:#fafafa;color:#101117}
   button:disabled{opacity:.5}
-  #err{color:#b42318;min-height:20px;font-size:13px}
+  #err{color:#ff8a80;min-height:20px;font-size:13px}
 </style></head><body><main>
 <form id="f">
   <img src="/uranus-mark.png" alt="">

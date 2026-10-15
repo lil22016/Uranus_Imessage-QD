@@ -48,6 +48,11 @@ body,
   height: 100%;
 }
 
+/* 画布底色是深色（和 theme-color / 状态栏一致）；页面本身的白底在 body 上 */
+html {
+  background: #101117;
+}
+
 /*
  * 「一屏高」。手写而不是用 Tailwind 的 h-screen。
  *
@@ -313,12 +318,12 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /*
- * 沉浸式状态栏下的顶部安全区（只在「主屏幕 / 网页 App」里生效，普通浏览器标签页不受影响）。
+ * 主屏幕 App 里的顶部安全区。
  *
- * index.html 声明了 apple-mobile-web-app-status-bar-style=black-translucent：页面会画到
- * 屏幕最顶、状态栏文字固定是白色。整页让出刘海那一条高度，并在那一条画深色底，
- * 经典界面（白底）上的白色时钟才看得清；小手机主屏幕、Companion、一起听歌是整屏盖层
- * （z-index 35 / 45，比这条高），它们自己处理顶部，用自己的颜色。
+ * 现在状态栏是 black（页面从状态栏下面开始），safe-area-inset-top = 0，这段等于不生效；
+ * 留着是给以后改回 black-translucent 用：那时整页让出刘海高度，并在那一条画深色底。
+ * 深色条用 body::after —— body::before 是壁纸遮罩（veil），以前这里覆盖了它，
+ * 主屏幕 App 里壁纸遮罩会整个消失。
  */
 @media (display-mode: standalone) {
   #root {
@@ -328,7 +333,7 @@ input[type="range"]::-moz-range-thumb {
   .h-viewport {
     height: calc(100dvh - env(safe-area-inset-top, 0px));
   }
-  body::before {
+  body::after {
     content: "";
     position: fixed;
     top: 0;

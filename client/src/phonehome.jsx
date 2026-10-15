@@ -238,7 +238,6 @@ function Avatar({ src, letter, onPick, className = "" }) {
 }
 
 /** 让浏览器 / 系统顶部那一条的颜色跟着主题走（iOS Safari、Android Chrome 认 theme-color）。 */
-const SKIN_TOP = { glass: "#a9c9ee", cream: "#eceee8", dark: "#1e2433" };
 export function useChromeColor(color) {
   useEffect(() => {
     const head = document.head;
@@ -277,7 +276,8 @@ export function PhoneHome({ nav, config, onOpen, onExit }) {
   const pagerRef = useRef(null);
   const [page, setPage] = useState(0);
   const coverRef = useRef(null);
-  useChromeColor(SKIN_TOP[theme.skin] ?? SKIN_TOP.glass);
+  // 浏览器 / 系统顶栏统一用深色：浅色皮肤的顶色会让系统把状态栏画成一条浅灰白条
+  useChromeColor("#101117");
 
   const byId = Object.fromEntries(nav.map((n) => [n.id, n]));
   const pick = (ids) => ids.map((id) => byId[id]).filter(Boolean);
