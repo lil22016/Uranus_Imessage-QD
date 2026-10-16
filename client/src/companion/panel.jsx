@@ -798,7 +798,7 @@ function FeedPage({ ctx }) {
       <DateBar ctx={ctx} />
       {list.length ? (
         list.map((n) => (
-          <div className="note" key={n.id}>
+          <div className={n.kind === "system" ? "note sys" : "note"} key={n.id}>
             {n.text}
             <div className="meta">{new Date(n.createdAt).toLocaleString("zh-CN")}</div>
           </div>

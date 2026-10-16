@@ -273,7 +273,7 @@ function OrganizerCard({ s, up, data, save, ctx }) {
         明确的未来计划会被写成角色的活动，日期不明的留在「未排期」。整理用的是下面选的模型，和角色聊天用的模型无关。
       </p>
       <label className="check">
-        <input type="checkbox" checked={!!org.enabled} onChange={(e) => up(["organizer", "enabled"], e.target.checked)} /> 自动整理（每隔一段时间一次）
+        <input type="checkbox" checked={!!org.enabled} onChange={(e) => up(["organizer", "enabled"], e.target.checked)} /> 自动整理（到下面的时间点各整理一次；Uranus 写好新日记后也会在 10 分钟内自动拉过来）
       </label>
       <Field label="整理出的日记/活动用什么语言（留空 = 保持原文语言）">
         <input value={org.language || ""} placeholder="English" onChange={(e) => up(["organizer", "language"], e.target.value)} />
@@ -303,9 +303,7 @@ function OrganizerCard({ s, up, data, save, ctx }) {
           ))}
         </select>
       </Field>
-      <Field label="自动整理间隔（分钟，至少 10）">
-        <input type="number" min="10" value={org.intervalMinutes ?? 60} onChange={(e) => up(["organizer", "intervalMinutes"], Number(e.target.value))} />
-      </Field>
+      <OrgTimes org={org} up={up} />
       <div className="row" style={{ flexWrap: "wrap", marginTop: 4 }}>
         <button type="button" className="pill solid" disabled={!!busy || !org.roleKey} onClick={() => run(0)}>
           {busy === "now" ? "整理中…" : "立即整理"}
@@ -325,6 +323,7 @@ function OrganizerCard({ s, up, data, save, ctx }) {
           <div>
             上次：{new Date(st.lastRunAt).toLocaleString("zh-CN")} · {st.ok ? "成功" : <span className="err">失败</span>}
             {st.backlog ? " · 还有积压，10 分钟后继续" : ""}
+            {" · 每次结果也会记在「动态」里"}
           </div>
           {st.error && <div className="err meta">{st.error}</div>}
           {c && (
@@ -336,6 +335,41 @@ function OrganizerCard({ s, up, data, save, ctx }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 自动整理的时间点：1～3 个，随时加减。
+ * 全删光就退回旧的「每隔 N 分钟」模式（那个输入框只在这时出现）。
+ * 检查有没有新日记不调模型、不花 token，所以日记不用等时间点。
+ */
+function OrgTimes({ org, up }) {
+  const times = Array.isArray(org.times) ? org.times : ["09:00", "13:00", "22:30"];
+  const set = (arr) => up(["organizer", "times"], [...new Set(arr.filter(Boolean))].sort());
+  return (
+    <Field label="自动整理时间点（最多 3 个，按 Companion 设置里的时区）">
+      <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+        {times.map((t, i) => (
+          <span key={i} className="row" style={{ gap: 4 }}>
+            <input type="time" value={t} style={{ width: 110 }} onChange={(e) => set(times.map((x, k) => (k === i ? e.target.value : x)))} />
+            <button type="button" className="link" aria-label="删除这个时间点" onClick={() => set(times.filter((_, k) => k !== i))}>
+              ✕
+            </button>
+          </span>
+        ))}
+        {times.length < 3 && (
+          <button type="button" className="pill" onClick={() => set([...times, times.length ? "18:00" : "09:00"])}>
+            + 时间点
+          </button>
+        )}
+      </div>
+      {!times.length && (
+        <div style={{ marginTop: 8 }}>
+          <span className="meta">没有时间点时，改成每隔几分钟整理一次（至少 10）：</span>
+          <input type="number" min="10" value={org.intervalMinutes ?? 60} style={{ width: 80 }} onChange={(e) => up(["organizer", "intervalMinutes"], Number(e.target.value))} />
+        </div>
+      )}
+    </Field>
   );
 }
 

@@ -101,6 +101,7 @@ mark{background:rgb(250 230 130 / .55);color:inherit;border-radius:3px;padding:0
 
 /* 动态 */
 .note{padding:10px 2px;border-bottom:1px solid var(--k-line)}
+.note.sys{font-size:13px;opacity:.78}
 
 /* 弹层 */
 .overlay{position:fixed;inset:0;background:rgba(8,10,16,.66);display:flex;align-items:flex-end;justify-content:center;z-index:200}
