@@ -1338,6 +1338,39 @@ const REFUSAL_MSG = "很抱歉，我无法协助处理这个请求。";
   check("成功之后待总结清空了", bytesOf(memoPendC), 0);
 }
 
+// ---- 旧清单里一大半标了「下次更新会删除」：模型按规矩删掉，不算缩水 ----
+{
+  const cfg = chainConfig();
+  const live = Array.from({ length: 8 }, (_, i) => `${i + 1}. 还在进行的第 ${i + 1} 件事`);
+  const done = Array.from({ length: 30 }, (_, i) => `${i + 9}. 做完的第 ${i + 1} 件事（下次更新备忘录会删除该项）`);
+  store.writeMemo(CK, [...live, ...done, "更新时间：2026年10月15日 22:00"].join("\n"));
+  store.appendPending("memo", CK, { user: "按规矩清掉做完的", assistant: "嗯" });
+  const next = [...live, "9. 这轮新增的一条", "更新时间：2026年10月16日 05:00"].join("\n");
+  fakeLLM(next);
+  const out = await chains.summarizeMemo(cfg, chainRole(cfg), CK);
+  check("待删项被清掉不触发缩水闸", out.content, next);
+  check("写盘了", store.readMemo(CK), next);
+}
+
+// ---- 待删项不算数，但该留的条目真漏了还是要拦 ----
+{
+  const cfg = chainConfig();
+  const live = Array.from({ length: 10 }, (_, i) => `${i + 1}. 还在进行的第 ${i + 1} 件事`);
+  const done = Array.from({ length: 5 }, (_, i) => `${i + 11}. 做完的第 ${i + 1} 件事（已完成）`);
+  const full = [...live, ...done].join("\n");
+  store.writeMemo(CK, full);
+  store.appendPending("memo", CK, { user: "写残的一轮", assistant: "嗯" });
+  fakeLLM("1. 只剩这条\n2. 和这条\n3. 还有这条");
+  let err = "";
+  try {
+    await chains.summarizeMemo(cfg, chainRole(cfg), CK);
+  } catch (e) {
+    err = e.message;
+  }
+  checkThat("该留的 10 条只剩 3 条照样拦", /该留的有 10 条/.test(err), err.slice(0, 120));
+  check("旧备忘录没动", store.readMemo(CK), full);
+}
+
 // ---- 备忘录本来就只有几条时不判缩水（刚开始用，模型在正常合并） ----
 {
   const cfg = chainConfig();
