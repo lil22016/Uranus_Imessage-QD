@@ -173,22 +173,7 @@ export function MusicPanel({ onExit }) {
       </header>
 
       <div className="mu-body">
-        {/* 两个头像 + 耳机线：两根线从各自头像垂下来，在中间交缠成一股 */}
-        <div className="mu-pair">
-          <div className="mu-who l">
-            {bubble && <div className="mu-say">{bubble}</div>}
-            <Avatar src={theme.avatarRole} label={names.c} />
-            {hisAtt && <span className="mu-att">{hisAtt === "like" ? <Heart size={12} fill="currentColor" /> : <ThumbsDown size={12} />}</span>}
-          </div>
-          <div className="mu-who r">
-            <Avatar src={theme.avatarUser} label={names.u || "我"} />
-            {iLike && <span className="mu-att"><Heart size={12} fill="currentColor" /></span>}
-          </div>
-          <svg className={`mu-cable ${playing ? "on" : ""}`} viewBox="0 0 260 150" aria-hidden>
-            <path className="c1" d="M4 40 C4 64 30 80 72 91 C102 99 122 104 130 112 C141 124 126 134 120 146" />
-            <path className="c2" d="M256 40 C256 64 230 80 188 91 C158 99 138 104 130 112 C119 124 134 134 140 146" />
-          </svg>
-        </div>
+        <Pair theme={theme} names={names} bubble={bubble} hisAtt={hisAtt} iLike={iLike} playing={playing} />
 
         {/* 封面 / 歌词 */}
         <div className="mu-stage">
@@ -340,6 +325,104 @@ export function MusicPanel({ onExit }) {
       {menu && <TrackMenu onClose={() => setMenu(false)} mode={mode} lists={myLists} song={song} />}
       {sheet && <Settings onClose={() => setSheet(false)} L={L} mcfg={mcfg} profiles={profiles} providers={config?.providers ?? []} myLists={myLists} onNewList={(pl) => setLists((x) => [{ ...pl, creator: { userId: L.uid } }, ...x])} />}
     </div>
+  );
+}
+
+/**
+ * 两个头像 + 耳机线。
+ *
+ * 一打开先是「等待 Ta 加入中…」：两个头像分开，Ta 那边暗着、头像上三个点在跳；
+ * 过两三秒 Ta「加入」—— 两个头像一起往中间走，碰到一起时轻轻弹一下，
+ * 下面换成「Ta 加入和你一起听啦！」。
+ *
+ * 耳机线还是原来那个形状（两根从各自头像垂下来、在中间交缠成一股），
+ * 只是起点跟着头像走。线的形状用 JS 逐帧算（requestAnimationFrame）而不是
+ * CSS 过渡 SVG 的 d 属性 —— Safari 不支持过渡 d，iOS 上线会跟头像脱节。
+ */
+const PAIR_W = 260;
+const AV = 84; // 头像直径
+const MEET = (PAIR_W - 2 * AV) / 2 + 3; // 每边往中间走多少：走完正好贴住，再多压 3px 显得「碰上了」
+function cablePath(dx, side) {
+  // 左边那根；右边的按中线镜像
+  const pts = [
+    [8 + dx, 62], [8 + dx, 92], [38 + dx * 0.8, 108], [80 + dx * 0.45, 118],
+    [108, 124], [124, 128], [130, 136],
+    [141, 148], [126, 158], [120, 170],
+  ].map(([x, y]) => [side === "r" ? PAIR_W - x : x, y]);
+  const f = ([x, y]) => `${x.toFixed(1)} ${y}`;
+  return `M${f(pts[0])} C${f(pts[1])} ${f(pts[2])} ${f(pts[3])} C${f(pts[4])} ${f(pts[5])} ${f(pts[6])} C${f(pts[7])} ${f(pts[8])} ${f(pts[9])}`;
+}
+function Pair({ theme, names, bubble, hisAtt, iLike, playing }) {
+  const [phase, setPhase] = useState("wait"); // wait → meet（动画中）→ joined
+  const [k, setK] = useState(0); // 0 = 分开，1 = 贴住
+  useEffect(() => {
+    const reduce = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let raf = 0;
+    const wait = setTimeout(() => {
+      if (reduce) {
+        setK(1);
+        setPhase("joined");
+        return;
+      }
+      setPhase("meet");
+      const t0 = performance.now(), D = 820;
+      const step = (now) => {
+        const t = Math.min(1, (now - t0) / D);
+        // 先慢后快地靠近（像被对方吸过去），最后一下碰上
+        setK(t < 1 ? t * t * (3 - 2 * t) * (0.85 + 0.15 * t) : 1);
+        if (t < 1) raf = requestAnimationFrame(step);
+        else setPhase("joined");
+      };
+      raf = requestAnimationFrame(step);
+    }, 2200 + Math.random() * 1800);
+    return () => {
+      clearTimeout(wait);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+  const dx = k * MEET;
+  const who = names.c || "Ta";
+  return (
+    <>
+      <div className={`mu-pair ${phase}`}>
+        <div className="mu-who l" style={{ transform: `translateX(${dx}px)` }}>
+          {bubble && phase === "joined" && <div className="mu-say">{bubble}</div>}
+          <div className="mu-wait">
+            <Avatar src={theme.avatarRole} label={who} />
+            {phase === "wait" && (
+              <span className="mu-dots" aria-hidden>
+                <i />
+                <i />
+                <i />
+              </span>
+            )}
+          </div>
+          {hisAtt && phase === "joined" && <span className="mu-att">{hisAtt === "like" ? <Heart size={12} fill="currentColor" /> : <ThumbsDown size={12} />}</span>}
+        </div>
+        <div className="mu-who r" style={{ transform: `translateX(${-dx}px)` }}>
+          <Avatar src={theme.avatarUser} label={names.u || "我"} />
+          {iLike && <span className="mu-att"><Heart size={12} fill="currentColor" /></span>}
+        </div>
+        <svg className={`mu-cable ${playing && phase === "joined" ? "on" : ""}`} viewBox={`0 0 ${PAIR_W} 178`} aria-hidden>
+          <path className="c1" d={cablePath(dx, "l")} />
+          <path className="c2" d={cablePath(dx, "r")} />
+        </svg>
+      </div>
+      <div className={`mu-join ${phase}`} aria-live="polite">
+        {phase === "joined" ? (
+          <span key="in">{who} 加入和你一起听啦！</span>
+        ) : (
+          <span key="wait">
+            等待 {who} 加入中
+            <span className="mu-ell" aria-hidden>
+              <i>.</i>
+              <i>.</i>
+              <i>.</i>
+            </span>
+          </span>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -675,10 +758,31 @@ const CSS = `
 .mu-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 16px calc(28px + env(safe-area-inset-bottom));max-width:520px;width:100%;margin:0 auto;-webkit-overflow-scrolling:touch}
 .mu-ico{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;color:var(--dim)}
 .mu-ico:hover,.mu-ico.hot{color:var(--ac)}
-.mu-pair{position:relative;width:260px;max-width:100%;height:150px;margin:46px auto 4px}
-.mu-who{position:absolute;top:0;width:64px}
-.mu-who.l{left:0}.mu-who.r{right:0}
-.mu-av{width:64px;height:64px;border-radius:50%;overflow:hidden;border:1px solid var(--l);background:#ffffff14;display:grid;place-items:center;font-family:Georgia,serif;font-size:22px}
+.mu-pair{position:relative;width:260px;max-width:100%;height:178px;margin:46px auto 0}
+.mu-who{position:absolute;top:0;width:84px;z-index:1;will-change:transform}
+.mu-who.l{left:0}.mu-who.r{right:0;z-index:2}
+.mu-wait{position:relative;transition:filter .7s ease}
+.mu-pair.wait .mu-wait{filter:grayscale(.85) brightness(.5)}
+.mu-dots{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:6px}
+.mu-dots i{width:9px;height:9px;border-radius:50%;background:#f5f3f1;animation:mudot 1.2s ease-in-out infinite}
+.mu-dots i:nth-child(2){animation-delay:.18s}.mu-dots i:nth-child(3){animation-delay:.36s}
+@keyframes mudot{0%,70%,100%{opacity:.25;transform:translateY(0)}35%{opacity:1;transform:translateY(-3px)}}
+.mu-pair.joined .mu-who.l .mu-av{animation:mubumpl .42s cubic-bezier(.3,1.6,.5,1)}
+.mu-pair.joined .mu-who.r .mu-av{animation:mubumpr .42s cubic-bezier(.3,1.6,.5,1)}
+@keyframes mubumpl{0%{transform:translateX(3px) scale(.96,1.03)}100%{transform:none}}
+@keyframes mubumpr{0%{transform:translateX(-3px) scale(.96,1.03)}100%{transform:none}}
+.mu-pair::after{content:"";position:absolute;left:50%;top:42px;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--ac);opacity:0;pointer-events:none}
+.mu-pair.joined::after{animation:muspark .7s ease-out}
+@keyframes muspark{0%{opacity:.75;transform:scale(.4)}100%{opacity:0;transform:scale(7)}}
+.mu-join{text-align:center;font-size:14px;letter-spacing:.06em;color:var(--dim);min-height:22px;margin:2px 0 6px}
+.mu-join span{display:inline-block;animation:mujoin .45s ease}
+.mu-join.joined{color:var(--ink)}
+@keyframes mujoin{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.mu-ell i{font-style:normal;animation:muell 1.4s infinite}
+.mu-ell i:nth-child(2){animation-delay:.2s}.mu-ell i:nth-child(3){animation-delay:.4s}
+@keyframes muell{0%,100%{opacity:.15}40%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.mu-dots i,.mu-ell i,.mu-pair.joined::after,.mu-pair.joined .mu-av{animation:none}}
+.mu-av{width:84px;height:84px;border-radius:50%;overflow:hidden;border:1px solid var(--l);background:#ffffff14;display:grid;place-items:center;font-family:Georgia,serif;font-size:26px}
 .mu-av img{width:100%;height:100%;object-fit:cover}
 .mu-att{position:absolute;top:-5px;right:-5px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#101117;border:1px solid var(--ac);color:var(--ac)}
 .mu-cable{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;color:var(--dim);pointer-events:none;transition:color .4s}
