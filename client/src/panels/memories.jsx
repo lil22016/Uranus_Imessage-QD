@@ -1282,6 +1282,7 @@ function DiaryPage({ memKey, detail, gate, role, modelRef, reload, onGoto }) {
   const gen = useGenerate(memKey, reload);
   const [pendingView, setPendingView] = useState(false);
   const [writing, setWriting] = useState(false); // 手写一篇的那个表单开着没有
+  const [fixing, setFixing] = useState(false); // 「修正日记日期」弹窗
   const [picked, setPicked] = useState(""); // 选中的那天 `YYYY-MM-DD`
   const [month, setMonth] = useState(null); // {y, m}，null = 还没定，取最近一篇那个月
   const [error, setError] = useState("");
@@ -1391,9 +1392,14 @@ function DiaryPage({ memKey, detail, gate, role, modelRef, reload, onGoto }) {
         onPending={() => setPendingView(true)}
         busy={false}
         extra={
-          <Button variant="outline" onClick={() => setWriting(true)}>
-            <Plus size={14} /> 自己写一篇
-          </Button>
+          <>
+            <Button variant="outline" onClick={() => setWriting(true)}>
+              <Plus size={14} /> 自己写一篇
+            </Button>
+            <Button variant="outline" onClick={() => setFixing(true)} disabled={!diaries.length}>
+              <CalendarDays size={14} /> 修正日记日期
+            </Button>
+          </>
         }
       />
 
@@ -1433,6 +1439,8 @@ function DiaryPage({ memKey, detail, gate, role, modelRef, reload, onGoto }) {
           </p>
         )}
       </div>
+
+      {fixing && <DiaryDateFix memKey={memKey} reload={reload} onClose={() => setFixing(false)} />}
 
       {picked && (
         <DayDiaries
@@ -1721,6 +1729,103 @@ function DayDiaries({ memKey, day, files, onClose, reload, onError }) {
       )}
       </Modal>
     </>
+  );
+}
+
+/**
+ * 修正日记日期：以前日记按「生成那一刻」命名，过了零点才生成的那篇就落到了第二天
+ * （14 号的日记叫 2026-10-15.md）。这里按每篇日记**自己顶部的时间栏**挪回它写的那一天。
+ *
+ * 一打开先让后端出计划（不改任何东西），列出每一篇「现在 → 改成 → 依据」，
+ * 读不出日期、星期对不上、差得太多的会标「跳过」原样不动。点「按计划改名」才真的改，
+ * 后端改之前会先把这个角色的日记整份备份。规则见 server/src/diaryfix.js。
+ */
+function DiaryDateFix({ memKey, reload, onClose }) {
+  const [plan, setPlan] = useState(null);
+  const [busy, setBusy] = useState(true);
+  const [done, setDone] = useState(null);
+  const [error, setError] = useState("");
+  const url = `/api/memories/${encodeURIComponent(memKey)}/diary-fix-dates`;
+
+  useEffect(() => {
+    let live = true;
+    api(url, { method: "POST", body: { apply: false } })
+      .then((r) => live && setPlan(r.plan ?? []))
+      .catch((e) => live && setError(String(e?.message ?? e)))
+      .finally(() => live && setBusy(false));
+    return () => {
+      live = false;
+    };
+  }, [url]);
+
+  const moves = (plan ?? []).filter((r) => !r.keep);
+  async function apply() {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await api(url, { method: "POST", body: { apply: true } });
+      setDone(r);
+      await reload();
+    } catch (e) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="修正日记日期"
+      desc="按每篇日记顶部的时间栏，把日期放回它写的那一天"
+      maxWidth="max-w-3xl"
+      onClose={onClose}
+      footer={
+        <>
+          <p className="mr-auto min-w-0 text-meta leading-relaxed text-ink-faint">
+            {done
+              ? done.moved
+                ? `改好了 ${done.moved} 篇。原文件备份在：${done.backup}`
+                : "没有需要改的。"
+              : moves.length
+              ? `会改 ${moves.length} 篇，改之前先整份备份。`
+              : plan
+              ? "没有需要改名的日记。"
+              : ""}
+          </p>
+          {done || !moves.length ? (
+            <Button onClick={onClose}>关闭</Button>
+          ) : (
+            <Button onClick={apply} disabled={busy}>
+              {busy ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+              {busy ? "处理中…" : "按计划改名"}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <ErrorLine text={error} />
+      {!plan && busy && <p className="text-body text-ink-soft">正在读每一篇日记的时间栏…</p>}
+      {plan && (
+        <div className="grid gap-1.5 text-body">
+          <p className="mb-2 text-meta leading-relaxed text-ink-faint">
+            凌晨 5 点前的时间栏算前一天。读不出日期、写的星期几对不上、和文件名差太多的，会跳过不动。
+          </p>
+          {plan.map((r) => (
+            <div key={r.name} className="flex flex-wrap items-baseline gap-x-3 border-b border-line py-1.5">
+              <code className="text-ink">{r.name}</code>
+              {r.keep ? (
+                <span className="text-ink-faint">不动</span>
+              ) : (
+                <span className="text-ink">
+                  → <code>{r.newName}</code>
+                </span>
+              )}
+              <span className="text-meta text-ink-faint">{r.note}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }
 
