@@ -926,11 +926,32 @@ export async function generateDiary(config, role, key, opts = {}) {
     );
   }
 
-  const file = writeDiary(key, localDate(now), text);
+  const file = writeDiary(key, diaryDayOf(log, now), text);
   // 写成了才清流水，而且清之前先备份。上面任何一条 throw 都走不到这里
   commitDiaryLog(key);
   logInfo("记忆库", `${key} 生成了一篇日记 ${file}（${text.length} 字，打了 ${tries + 1} 次）`);
   return { file, text, tries: tries + 1 };
+}
+
+/**
+ * 这篇日记属于哪一天：看流水**最后一条**消息的日期（日记提示词也规定以它为准，
+ * 日记顶部的时间栏就是它），而不是「生成的那一刻」。
+ *
+ * 以前用生成时刻：定时日记过了零点才跑（00:41），14 号的日记就叫
+ * 2026-10-15.md。最后一条在凌晨 05:00 前的，算前一天 —— 熬夜聊过零点，
+ * 还是前一天的日记。流水里一行带日期的都没有，才退回生成时刻。
+ */
+export function diaryDayOf(log, now = new Date()) {
+  const lines = String(log ?? "").split(/\r?\n/);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})\s+\S+\s+(\d{2}):\d{2}/.exec(lines[i].trim());
+    if (!m) continue;
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (Number(m[4]) < 5) d.setDate(d.getDate() - 1);
+    // 防呆：算出来比生成时刻还晚（时钟被改过之类）就不信它
+    return d > now ? localDate(now) : localDate(d);
+  }
+  return localDate(now);
 }
 
 /**
