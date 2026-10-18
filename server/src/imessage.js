@@ -3,6 +3,7 @@ import {
   cardHintFor,
   embeddedKindOf,
   fetchEmbeddedMedia,
+  fetchNativeMessage,
   formatAmount,
   isCardUrl,
   mapsUrlFor,
@@ -9747,7 +9748,37 @@ async function startRunner(getConfig, project, meta, retries = 0) {
              * 没带任何效果时 effectHintOf 返回空串，这里就不占一条 —— 绝大多数
              * 消息都是这种，不能让每条消息后面都拖一句废话。
              */
-            const effectHint = userText ? effectHintOf(message, scope) : "";
+            let effectHint = userText ? effectHintOf(message, scope) : "";
+            /*
+             * 实时推过来的消息上没带效果信息时，单独把这条完整取一次再看。
+             * 实测：带 enlarge 的消息推过来时 formatting / expressiveSendStyleId
+             * 都是空的（控制台连「带了格式/效果」那行都没有）—— 和平安确认的
+             * 正文一样，推送那份是删减过的（见 card.js fetchNativeMessage）。
+             * 只有云端模式有 Photon 可问；最多等 3 秒，问不到就当没有。
+             */
+            if (userText && !effectHint && runner.mode === "cloud" && message.id) {
+              const native = await fetchNativeMessage({
+                projectId: project.projectId,
+                projectSecret: project.projectSecret,
+                messageGuid: message.id,
+                scope,
+              });
+              if (native) {
+                const merged = {
+                  nativeText: message.nativeText ?? native.nativeText ?? native.text ?? native.content?.text ?? plainText ?? "",
+                  expressiveSendStyleId:
+                    native.expressiveSendStyleId ?? native.content?.expressiveSendStyleId ?? native.effectId ?? native.expressiveSendStyle ?? null,
+                  formatting: native.formatting ?? native.content?.formatting ?? native.textFormatting ?? native.content?.textFormatting ?? [],
+                };
+                effectHint = effectHintOf(merged, scope);
+                if (!effectHint) {
+                  logDebug(
+                    scope,
+                    `单独取回的这条消息上也没有效果信息（字段：${Object.keys(native).join("/")}；content：${Object.keys(native.content ?? {}).join("/") || "无"}）`
+                  );
+                }
+              }
+            }
             if (effectHint) {
               enqueue(getConfig, runner, space, spaceId, { text: effectHint, message }, peer);
             }
@@ -9768,6 +9799,17 @@ async function startRunner(getConfig, project, meta, retries = 0) {
             // null，`?.` 正好跳过 —— 那时候压根没占过窗口
             doneUnpacking?.();
           }
+        }
+        /*
+         * 走到这儿说明消息流**正常结束**了（对面把连接干净地关掉，没抛错）。
+         * 以前这里什么都不做：循环悄悄退出、状态还挂着「在线」、不重连 ——
+         * 之后对方发什么都收不到，控制台也一片空白。当成断线处理。
+         */
+        if (!runner.stopped) {
+          logWarn(scope, "消息流自己结束了（连接被对面关掉），按断线处理，准备重连");
+          runner.status = "error";
+          runner.error = "消息流结束了";
+          scheduleRetry(getConfig, runner, new Error("消息流结束了"));
         }
       } catch (err) {
         if (runner.stopped) return; // 主动停掉时流会断，这不算错

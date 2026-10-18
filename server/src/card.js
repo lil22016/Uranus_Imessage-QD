@@ -500,6 +500,41 @@ async function fetchCardDetail({ projectId, projectSecret, messageGuid, scope, w
 }
 
 /**
+ * 单独把一条消息完整取一次（和 fetchCardDetail 同一条路：临时开客户端，挨个线路问，
+ * 第一条问到就收工）。实时推过来的那份常常缺字段 —— 平安确认的正文是这样，
+ * 逐词效果 / 屏幕特效看起来也是这样，所以拿它给 effectHintOf 兜底。
+ *
+ * @returns {Promise<object|null>} 底层原样的消息对象；问不到 / 超时就是 null
+ */
+export async function fetchNativeMessage({ projectId, projectSecret, messageGuid, scope, timeout = 3000 }) {
+  if (!projectId || !projectSecret || !messageGuid) return null;
+  let opened = [];
+  const work = (async () => {
+    opened = await createLineClients(projectId, projectSecret, { timeout });
+    for (const { client, instanceId } of opened) {
+      try {
+        const native = await client.messages.get(String(messageGuid));
+        if (native) return native;
+      } catch (e) {
+        logDebug(scope, `线路 ${instanceId} 上没读到这条消息：${String(e?.message ?? e)}`);
+      }
+    }
+    return null;
+  })();
+  let timer;
+  const cap = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), timeout + 500);
+  });
+  try {
+    return await Promise.race([work.catch(() => null), cap]);
+  } finally {
+    clearTimeout(timer);
+    // 超时那一路的客户端也得关掉，别留野连接
+    work.finally(() => closeClients(opened)).catch(() => {});
+  }
+}
+
+/**
  * 对方发来的这条消息如果是张卡片，给模型写一句提示。
  *
  * 提示里的 `{{user}}` 是**字面量**，和背景变更、撤回那几条一样 —— 存进历史的
