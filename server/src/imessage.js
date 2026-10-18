@@ -711,16 +711,31 @@ function effectHintOf(message, scope) {
   }
 
   const formatting = Array.isArray(message?.formatting) ? message.formatting : [];
+  /*
+   * 真机上收到带效果的消息却没出提示 —— 当初只照 d.ts 写，认不出来的又只打
+   * debug，控制台里什么都看不见。现在：只要这条消息带了任何格式/效果信息，
+   * 原样打一条 info，下次不对一眼就知道 SDK 实际给的是什么。
+   */
+  if (formatting.length || message?.expressiveSendStyleId) {
+    let raw = "";
+    try {
+      raw = JSON.stringify({ expressiveSendStyleId: message?.expressiveSendStyleId ?? null, formatting }).slice(0, 600);
+    } catch {
+      raw = "(无法序列化)";
+    }
+    logInfo(scope, `这条消息带了格式/效果：${raw}`);
+  }
   for (const item of formatting) {
-    const name = String(item?.effectName ?? "").trim();
-    if (!name) continue;
+    const rawName = String(item?.effectName ?? item?.effect ?? item?.textEffect ?? "").trim();
+    if (!rawName) continue; // 粗体/斜体之类没有 effectName，照旧不要
+    const name = wordEffectKey(rawName);
     const label = WORD_EFFECT_LABELS[name];
     if (!label) {
-      logDebug(scope, `不认识的逐词效果 effectName=${name}，这条先忽略`);
+      logInfo(scope, `不认识的逐词效果 effectName=${rawName}，这条先忽略（把这行日志发给开发者就能补上）`);
       continue;
     }
-    const start = Number(item?.start);
-    const length = Number(item?.length);
+    const start = Number(item?.start ?? item?.range?.location ?? item?.location);
+    const length = Number(item?.length ?? item?.range?.length);
     if (!Number.isFinite(start) || !Number.isFinite(length) || length <= 0) continue;
     const piece = native.slice(start, start + length).trim();
     if (!piece) continue;
@@ -729,6 +744,21 @@ function effectHintOf(message, scope) {
 
   if (!notes.length) return "";
   return `[系统提示:{{user}}${notes.join("；")}。]`;
+}
+
+/**
+ * 逐词效果名归一：SDK / 系统在不同版本里可能给 "big"、"Big"、"enlarge"、
+ * "kIMTextEffectBig"、"IMTextEffectTypeBig" 之类，统一成 WORD_EFFECT_LABELS 的键。
+ */
+const WORD_EFFECT_ALIASES = { enlarge: "big", large: "big", bigger: "big", grow: "big", shrink: "small", smaller: "small", tiny: "small" };
+function wordEffectKey(raw) {
+  const k = String(raw)
+    .replace(/^_+/, "")
+    .replace(/^k?IMTextEffect(Type)?/i, "")
+    .replace(/^TextEffect(Type)?/i, "")
+    .replace(/Effect$/i, "")
+    .toLowerCase();
+  return WORD_EFFECT_ALIASES[k] || k;
 }
 
 /** 引原文时统一的截断：超了掐掉加省略号，只是用来指认「哪一句」。 */
