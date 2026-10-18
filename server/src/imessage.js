@@ -8801,9 +8801,44 @@ async function startRunner(getConfig, project, meta, retries = 0) {
      */
     rehydrateTransferReminders(getConfig, runner);
 
+    /*
+     * 卡住检测。消息是一条一条串行拆的：某一条卡在某个 await 上不动，后面的
+     * 就全排在它后面，不报错也不打日志 —— 实机遇到过「主动消息照发、对方发
+     * 什么都没反应、控制台一片空白」。每 15 秒看一眼，一条拆了 30 秒还没完
+     * 就说一声卡在哪一步。
+     */
+    runner.busySince = 0;
+    runner.busyStep = "";
+    const stallTimer = setInterval(() => {
+      if (runner.stopped) return clearInterval(stallTimer);
+      if (!runner.busySince) return;
+      const secs = Math.round((Date.now() - runner.busySince) / 1000);
+      if (secs >= 30 && !runner.busyWarned) {
+        runner.busyWarned = true;
+        logWarn(scope, `一条消息已经处理了 ${secs} 秒还没完（卡在：${runner.busyStep || "未知"}），后面的消息都在排队`);
+      }
+    }, 15000);
+    stallTimer.unref?.();
+    const step = (name) => {
+      runner.busyStep = name;
+    };
+
     (async () => {
       try {
         for await (const [space, message] of instance.messages) {
+          runner.busySince = Date.now();
+          runner.busyWarned = false;
+          step("开始处理");
+          /*
+           * 推过来什么都先记一行（已读回执除外，太频繁）。之前过滤掉的消息一个字
+           * 都不留，「发了没反应」时分不清是根本没推过来、还是推过来被扔了。
+           */
+          if (message?.content?.type !== "read") {
+            logInfo(
+              scope,
+              `收到推送：${message?.content?.type ?? typeof message?.content}（direction=${message?.direction ?? "?"}，platform=${message?.platform ?? "?"}）`
+            );
+          }
           /*
            * 「这条消息拆完了」的收尾，**声明在 try 外面**：下面 catch 里也要调
            * （拆到一半崩了同样得放掉合并窗口），而 try 块里的 const 在 catch 里
@@ -8813,7 +8848,10 @@ async function startRunner(getConfig, project, meta, retries = 0) {
           try {
             if (runner.stopped) break; // 这条连接已经被换掉了
             if (message.direction === "outbound") continue; // 忽略自己发的
-            if (message.platform !== platformId) continue; // 非当前 provider
+            if (message.platform !== platformId) {
+              logWarn(scope, `这条推送的 platform=${message.platform}，和当前的 ${platformId} 对不上，跳过`);
+              continue; // 非当前 provider
+            }
             if (message.id && runner.seen.has(message.id)) continue; // 去重
 
             const spaceId = message.space?.id ?? message.sender?.id ?? "unknown";
@@ -9039,6 +9077,7 @@ async function startRunner(getConfig, project, meta, retries = 0) {
              * 不联网也不花时间；只有真碰上卡片才会去底层 gRPC 问一次详情，
              * 所以项目凭据只在云端模式给（本地 Mac 模式没有 Photon 可问）。
              */
+            step("读卡片详情");
             const cardHint = await cardHintFor(message, {
               projectId: runner.mode === "cloud" ? project.projectId : "",
               projectSecret: runner.mode === "cloud" ? project.projectSecret : "",
@@ -9648,7 +9687,7 @@ async function startRunner(getConfig, project, meta, retries = 0) {
                 images: linkImageUrls,
                 videos: linkVideoUrls,
                 covers: linkCoverUrls,
-              } = await renderLinks(userText, linkScope);
+              } = await (step("解析链接"), renderLinks(userText, linkScope));
 
               /*
                * 链接里的视频（抖音视频作品，够短的那些）走识视频那条路。
@@ -9757,6 +9796,7 @@ async function startRunner(getConfig, project, meta, retries = 0) {
              * 只有云端模式有 Photon 可问；最多等 3 秒，问不到就当没有。
              */
             if (userText && !effectHint && runner.mode === "cloud" && message.id) {
+              step("取完整消息看效果");
               const native = await fetchNativeMessage({
                 projectId: project.projectId,
                 projectSecret: project.projectSecret,
@@ -9798,6 +9838,9 @@ async function startRunner(getConfig, project, meta, retries = 0) {
             // 还没走到 holdPending 就崩的（过滤、取 spaceId 那一段）这里还是
             // null，`?.` 正好跳过 —— 那时候压根没占过窗口
             doneUnpacking?.();
+          } finally {
+            // continue 跳过的、正常拆完的、崩了的，都在这儿收尾（卡住检测靠它）
+            runner.busySince = 0;
           }
         }
         /*
