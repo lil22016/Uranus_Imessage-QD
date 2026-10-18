@@ -179,7 +179,7 @@ export function MusicPanel({ onExit }) {
         <div className="mu-stage">
           {song ? (
             <>
-              <button type="button" className="mu-cover" onClick={() => setShowLrc((v) => !v)} aria-label="切换封面和歌词">
+              <button type="button" className={`mu-cover ${showLrc ? "lrcon" : ""}`} onClick={() => setShowLrc((v) => !v)} aria-label="切换封面和歌词">
                 {showLrc ? (
                   <div className="mu-lrc" ref={lyrRef}>
                     {lrc.length ? (
@@ -299,8 +299,14 @@ export function MusicPanel({ onExit }) {
             <div className="mu-msgs">
               {!chat.length && <div className="mu-empty">只聊音乐。想到什么说什么，Ta 也会偶尔自己开口。</div>}
               {chat.map((m) => (
-                <div key={m.id} className={`mu-msg ${m.role === "user" ? "me" : ""}`}>
-                  {m.text}
+                <div key={m.id} className={`mu-mrow ${m.role === "user" ? "me" : ""}`}>
+                  {/* 这句话是在放哪首歌时说的：粘在气泡顶上的小标签 */}
+                  {m.song?.name && (
+                    <span className="mu-stag" title={m.song.artist ? `${m.song.name} · ${m.song.artist}` : m.song.name}>
+                      ♪ {m.song.name}
+                    </span>
+                  )}
+                  <div className="mu-msg">{m.text}</div>
                 </div>
               ))}
               {busy && <div className="mu-msg dim">…</div>}
@@ -753,12 +759,12 @@ const CSS = `
  background:radial-gradient(120% 70% at 20% 0%,#3a3550 0,transparent 60%),radial-gradient(100% 60% at 100% 30%,#2e3a3d 0,transparent 55%),#101117;overflow:hidden}
 .mu *{box-sizing:border-box}
 .mu button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.mu-top{flex:none;display:flex;align-items:center;justify-content:space-between;gap:4px;padding:calc(8px + env(safe-area-inset-top)) 12px 6px;max-width:520px;width:100%;margin:0 auto}
+.mu-top{flex:none;display:flex;align-items:center;justify-content:space-between;gap:4px;padding:calc(6px + env(safe-area-inset-top)) 12px 2px;max-width:520px;width:100%;margin:0 auto}
 .mu-title{flex:1;display:flex;align-items:center;gap:6px;font-family:Georgia,serif;letter-spacing:.08em;font-size:15px}
 .mu-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 16px calc(28px + env(safe-area-inset-bottom));max-width:520px;width:100%;margin:0 auto;-webkit-overflow-scrolling:touch}
 .mu-ico{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;color:var(--dim)}
 .mu-ico:hover,.mu-ico.hot{color:var(--ac)}
-.mu-pair{position:relative;width:260px;max-width:100%;height:150px;margin:46px auto 0}
+.mu-pair{position:relative;width:260px;max-width:100%;height:150px;margin:18px auto 0}
 .mu-who{position:absolute;top:0;width:64px;z-index:1;will-change:transform}
 .mu-who.l{left:0}.mu-who.r{right:0;z-index:2}
 .mu-wait{position:relative;transition:filter .7s ease}
@@ -791,13 +797,17 @@ const CSS = `
 .mu-cable.on path.c1{animation:mucab 2.4s ease-in-out infinite}
 .mu-cable.on path.c2{animation:mucab 2.4s ease-in-out -1.2s infinite}
 @keyframes mucab{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
-.mu-say{position:absolute;bottom:100%;left:0;margin-bottom:8px;width:max-content;max-width:210px;padding:8px 11px;border-radius:14px 14px 14px 3px;background:#ffffff20;border:1px solid var(--l);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:13px;line-height:1.45;z-index:2;animation:musay .25s ease}
+.mu-say{position:absolute;top:100%;left:6px;margin-top:6px;width:max-content;max-width:210px;padding:8px 11px;border-radius:3px 14px 14px 14px;background:#ffffff20;border:1px solid var(--l);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:13px;line-height:1.45;z-index:2;animation:musay .25s ease}
 @keyframes musay{from{opacity:0}to{opacity:1}}
 .mu-stage{display:flex;flex-direction:column;align-items:center;margin-top:8px}
 .mu-cover{width:min(62vw,230px);aspect-ratio:1;border-radius:18px;overflow:hidden;border:1px solid var(--l)!important;background:#ffffff12!important;display:grid;place-items:center;color:var(--dim);padding:0}
 .mu-cover img{width:100%;height:100%;object-fit:cover}
 .mu-lrc{width:100%;height:100%;overflow:auto;padding:40% 14px;text-align:center;scrollbar-width:none;background:#0000008c;position:relative}
 .mu-lrc p{margin:0 0 10px;font-size:14px;line-height:1.5;color:var(--dim)}
+.mu-cover.lrcon{width:calc(100% + 32px);margin:0 -16px;aspect-ratio:auto;height:min(62vw,260px);border:0!important;border-radius:0;background:none!important;overflow:visible}
+.mu-cover.lrcon .mu-lrc{background:none;padding:calc(min(62vw,260px) / 2 - 12px) 16px;-webkit-mask-image:linear-gradient(transparent,#000 18%,#000 82%,transparent);mask-image:linear-gradient(transparent,#000 18%,#000 82%,transparent)}
+.mu-cover.lrcon .mu-lrc p{font-size:15px}
+.mu-cover.lrcon .mu-lrc p.on{font-size:17px}
 .mu-lrc p.on{color:var(--ink);font-size:15.5px}
 .mu-name{margin-top:12px;font-family:Georgia,serif;font-size:17px;text-align:center}
 .mu-art{font-size:12.5px;color:var(--dim);margin-top:2px;text-align:center}
@@ -824,6 +834,11 @@ const CSS = `
 .mu-msg{align-self:flex-start;max-width:82%;padding:8px 12px;border-radius:14px 14px 14px 3px;background:#ffffff18;border:1px solid var(--l);font-size:13.5px;line-height:1.5;white-space:pre-wrap}
 .mu-msg.me{align-self:flex-end;border-radius:14px 14px 3px 14px;background:#d6c2a82e}
 .mu-msg.dim{color:var(--dim)}
+.mu-mrow{align-self:flex-start;max-width:82%;display:flex;flex-direction:column;align-items:flex-start}
+.mu-mrow.me{align-self:flex-end;align-items:flex-end}
+.mu-mrow .mu-msg{max-width:100%;align-self:auto}
+.mu-mrow.me .mu-msg{border-radius:14px 14px 3px 14px;background:#d6c2a82e}
+.mu-stag{position:relative;z-index:1;margin:0 10px -6px;max-width:calc(100% - 20px);padding:1px 9px;border-radius:999px;background:#2a2b35;border:1px solid var(--l);color:var(--ac);font-size:11px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 6px #0004}
 .mu-in{display:flex;align-items:center;gap:4px;border:1px solid var(--l);border-radius:99px;padding:2px 4px 2px 14px;background:#ffffff0e}
 .mu-in input{flex:1;background:none;border:0;outline:none;color:var(--ink);font-size:16px;padding:8px 0;min-width:0}
 .mu-link{align-self:center;font-size:12px;color:var(--dim)!important;text-decoration:underline}

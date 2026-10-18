@@ -439,11 +439,12 @@ function showBubble(text) {
 }
 export async function sendChat(text) {
   const s = cur();
-  set({ chat: [...st.chat, { id: "u" + Date.now(), role: "user", text }] });
+  const sb = s ? brief(s) : null;
+  set({ chat: [...st.chat, { id: "u" + Date.now(), role: "user", text, song: sb }] });
   try {
-    const d = await cx("/music/chat", { method: "POST", body: { text, song: s ? brief(s) : {}, lyricLine: lineNow() } });
+    const d = await cx("/music/chat", { method: "POST", body: { text, song: sb || {}, lyricLine: lineNow() } });
     if (d.reply) {
-      set({ chat: [...st.chat, { id: "c" + Date.now(), role: "character", text: d.reply, kind: "chat" }] });
+      set({ chat: [...st.chat, { id: "c" + Date.now(), role: "character", text: d.reply, kind: "chat", song: sb }] });
       showBubble(d.reply);
     }
   } catch (e) {
@@ -488,7 +489,7 @@ function scheduleRoll() {
       });
       set({ att: d.attitudes || st.att });
       if (d.text) {
-        set({ chat: [...st.chat, { id: "r" + Date.now(), role: "character", text: d.text, kind: "react" }] });
+        set({ chat: [...st.chat, { id: "r" + Date.now(), role: "character", text: d.text, kind: "react", song: brief(s) }] });
         showBubble(d.text);
       }
       // 他点了爱心：如果在设置里选了歌单，就把这首加进去（网易云上能看到）；没选就只是在这里表达
