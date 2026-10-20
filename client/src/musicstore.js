@@ -125,22 +125,29 @@ const audio = typeof Audio !== "undefined" ? new Audio() : null;
 if (audio) {
   audio.preload = "auto";
   audio.addEventListener("play", () => {
+    switching = false;
     set({ playing: true });
     syncSession();
     scheduleRoll();
   });
   audio.addEventListener("pause", () => {
+    if (switching) return; // 换 src 时浏览器会顺带发一个 pause，别让锁屏界面以为停了
     set({ playing: false });
     syncSession();
   });
   audio.addEventListener("timeupdate", () => {
     set({ pos: audio.currentTime });
     updatePosition();
+    if (!isFinite(audio.duration) || !audio.duration) return;
+    const left = audio.duration - audio.currentTime;
     // 快放完时提前拿好下一首的地址（见 prefetchNext）
-    if (isFinite(audio.duration) && audio.duration - audio.currentTime < PREFETCH_LEAD) prefetchNext();
+    if (left < PREFETCH_LEAD) prefetchNext();
+    // 熄屏 / 后台：不等 ended，在最后一秒多一点就直接换下一首（见下面的说明）
+    if (isHidden() && !audio.paused && left < EARLY_SWITCH && local.mode !== "one") advancePrefetched();
   });
   audio.addEventListener("loadedmetadata", () => set({ dur: audio.duration || 0 }));
   audio.addEventListener("ended", () => {
+    if (audio.loop) return;
     if (local.mode === "one" && cur()) {
       audio.currentTime = 0;
       audio.play().catch(() => (resumeOnVisible = true));
@@ -165,14 +172,24 @@ const lineNow = () => {
  * 拦掉 —— 界面上已经切到下一首，但没声音，非得点亮屏幕再按一下。
  *
  * 所以：当前这首剩不到 PREFETCH_LEAD 秒时，就把下一首（以及它的地址）先拿好；
- * ended 里同步换 src、立刻 play()，中间没有任何 await，系统就会放行。
  * 网易云的地址有时效，太旧的预取不用，退回老路径。
+ *
+ * 但光是「ended 里同步换 src」还不够：到 ended 那一刻，<audio> 已经变成 paused，
+ * iOS 认为这段播放结束了，锁屏后再 play() 照样会被拦。所以页面在后台时，
+ * 不等 ended —— 剩不到 EARLY_SWITCH 秒、还在放的时候就直接把 src 换成下一首，
+ * 元素从头到尾都没停过，系统不会收回播放权限。（前台照旧等 ended，一点都不截。）
+ * 单曲循环直接用 audio.loop，也就不会有 ended。
  */
 const PREFETCH_LEAD = 40; // 秒
 const PREFETCH_TTL = 15 * 60 * 1000;
+const EARLY_SWITCH = 1.5; // 秒；后台 timeupdate 大约一秒一次，留一点余量
+const PREFETCH_RETRY = 5000; // 预取失败后隔多久再试
 let pre = null; // { queue, from, idx, url, trial, at, skipped }
 let preBusy = false;
+let preFailAt = 0;
 let resumeOnVisible = false;
+let switching = false;
+const isHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
 
 function pickNext(from) {
   const n = st.queue.length;
@@ -186,6 +203,7 @@ function pickNext(from) {
 async function prefetchNext() {
   if (preBusy || !st.queue.length || local.mode === "one") return;
   if (pre && pre.queue === st.queue && pre.from === st.idx) return;
+  if (Date.now() - preFailAt < PREFETCH_RETRY) return;
   preBusy = true;
   const queue = st.queue, from = st.idx;
   try {
@@ -204,8 +222,10 @@ async function prefetchNext() {
       skipped.push(s.name);
       i = local.mode === "shuffle" ? pickNext(i) : (i + 1) % queue.length;
     }
+    preFailAt = Date.now();
   } catch {
-    /* 预取失败无所谓，ended 时走老路径 */
+    /* 预取失败无所谓，过几秒再试；实在不行 ended 时走老路径 */
+    preFailAt = Date.now();
   } finally {
     preBusy = false;
   }
@@ -220,13 +240,21 @@ function advancePrefetched() {
   if (st.idx >= 0) history.push(st.idx);
   history = history.slice(-50);
   clearTimeout(rollTimer);
+  preFailAt = 0;
+  switching = !audio.paused;
   audio.src = p.url;
+  audio.loop = local.mode === "one";
   const pr = audio.play();
   set({ idx: p.idx, lrc: [], pos: 0, dur: s.dur || 0 });
   syncSession();
   if (p.skipped.length) say(`「${p.skipped.join("」「")}」放不了，已跳过`);
   else if (p.trial) say("这首只有试听片段（会员歌曲）");
-  pr?.catch?.(() => (resumeOnVisible = true));
+  pr?.catch?.(() => {
+    switching = false;
+    set({ playing: false });
+    syncSession();
+    resumeOnVisible = true;
+  });
   loadLyric(s);
   return true;
 }
@@ -250,6 +278,7 @@ export async function play(list, i) {
   if (!s || !audio) return;
   clearTimeout(rollTimer);
   pre = null;
+  preFailAt = 0;
   set({ queue: list, idx: i, lrc: [], pos: 0, dur: s.dur || 0 });
   syncSession();
   try {
@@ -272,11 +301,21 @@ export async function play(list, i) {
   }
   loadLyric(s);
 }
+/** 一键播放整个列表：随机模式从随机一首开始，其他从第一首开始。 */
+export function playAll(list) {
+  if (!list?.length) return;
+  history = [];
+  const i = local.mode === "shuffle" ? Math.floor(Math.random() * list.length) : 0;
+  play(list, i);
+}
 /* 播放顺序：seq 顺序 / shuffle 随机 / one 单曲循环（循环只管自然播完；手动点下一首照常切歌） */
 let history = [];
 export function setMode(m) {
   setLocal({ mode: m });
+  pre = null; // 换了播放方式，之前预取的「下一首」可能不对了
+  if (audio) audio.loop = m === "one";
 }
+if (audio) audio.loop = local.mode === "one";
 export function next() {
   if (!st.queue.length) return;
   if (advancePrefetched()) return; // 锁屏 / 耳机「下一首」也走预取，少一次等待

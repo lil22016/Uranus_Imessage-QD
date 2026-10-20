@@ -14,6 +14,7 @@ import {
   next,
   norm,
   play,
+  playAll,
   prev,
   refreshState,
   say,
@@ -61,6 +62,18 @@ export function MusicPanel({ onExit }) {
   const [menu, setMenu] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const bodyRef = useRef(null);
+
+  // 点了歌之后滚回最上面的播放界面
+  const toTop = () => bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  const playAt = (i) => {
+    play(tracks, i);
+    toTop();
+  };
+  const playAllNow = () => {
+    playAll(tracks);
+    toTop();
+  };
 
   useEffect(() => {
     refreshState();
@@ -172,7 +185,7 @@ export function MusicPanel({ onExit }) {
         </button>
       </header>
 
-      <div className="mu-body">
+      <div className="mu-body" ref={bodyRef}>
         <Pair theme={theme} names={names} bubble={bubble} hisAtt={hisAtt} iLike={iLike} playing={playing} />
 
         {/* 封面 / 歌词 */}
@@ -278,8 +291,17 @@ export function MusicPanel({ onExit }) {
             {!showList && (
               <>
                 {loadingTracks && <div className="mu-empty">加载中…</div>}
+                {!loadingTracks && tracks.length > 0 && (
+                  <button type="button" className="mu-all" onClick={playAllNow}>
+                    <span className="mu-all-ico">
+                      {mode === "shuffle" ? <Shuffle size={16} strokeWidth={1.8} /> : <Play size={16} fill="currentColor" />}
+                    </span>
+                    <span>{mode === "shuffle" ? "随机播放全部" : "播放全部"}</span>
+                    <i>{tracks.length} 首</i>
+                  </button>
+                )}
                 {tracks.map((t, i) => (
-                  <button type="button" key={t.id + ":" + i} className={`mu-row ${song?.id === t.id ? "cur" : ""}`} onClick={() => play(tracks, i)}>
+                  <button type="button" key={t.id + ":" + i} className={`mu-row ${song?.id === t.id ? "cur" : ""}`} onClick={() => playAt(i)}>
                     {t.cover ? <img src={t.cover + "?param=80y80"} alt="" /> : <span className="mu-ph" />}
                     <span className="mu-rt">
                       <b>{t.name}</b>
@@ -828,6 +850,10 @@ const CSS = `
 .mu-rt i{font-style:normal;font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mu-row.cur .mu-rt b{color:var(--ac)}
 .mu-mark{color:var(--ac);flex:none}
+.mu-all{display:flex;align-items:center;gap:10px;padding:8px 4px 10px;font-size:14px;color:var(--ink)}
+.mu-all-ico{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--ac);color:#1c1a18}
+.mu-all i{font-style:normal;font-size:12px;color:var(--dim)}
+.mu-all:active .mu-all-ico{transform:scale(.94)}
 .mu-back{display:flex;align-items:center;gap:2px;padding:4px 2px 8px;font-size:13px;color:var(--ac)!important}
 .mu-chat{display:flex;flex-direction:column;gap:8px}
 .mu-msgs{display:flex;flex-direction:column;gap:7px;max-height:320px;overflow:auto;padding:2px}
