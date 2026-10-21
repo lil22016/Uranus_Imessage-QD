@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, Headphones, Heart, ListMusic, Menu, MessageCircle, Minus, Pause, Play, Plus, Repeat1, Send, Settings2, Shuffle, SkipBack, SkipForward, ThumbsDown, X } from "lucide-react";
+import { Check, ChevronLeft, History, Headphones, Heart, ListMusic, Menu, MessageCircle, Minus, Pause, Play, Plus, Repeat1, Send, Settings2, Shuffle, SkipBack, SkipForward, ThumbsDown, X } from "lucide-react";
 import { useConfig } from "../store.jsx";
 import { cx } from "../companion/api.js";
 import { useTheme } from "../phonehome.jsx";
 import {
   addToList,
   clearChat,
+  clearHist,
   createList,
   loadLiked,
   getLocal,
@@ -15,6 +16,7 @@ import {
   norm,
   play,
   playAll,
+  playFromHistory,
   prev,
   refreshState,
   say,
@@ -43,16 +45,26 @@ const fmt = (s) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
+const ago = (t) => {
+  const m = Math.floor((Date.now() - t) / 60000);
+  if (m < 1) return "刚刚";
+  if (m < 60) return `${m} 分钟前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小时前`;
+  const d = new Date(t);
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
+};
+
 export function MusicPanel({ onExit }) {
   const { config } = useConfig();
   const theme = useTheme();
   const L = useLocal();
   const s = useMusic();
   const { api = "", cookie = "", mode = "seq" } = L;
-  const { queue, idx, playing, pos, dur, lrc, att, mcfg, profiles, chat, bubble, names, toast, liked } = s;
+  const { queue, idx, playing, pos, dur, lrc, att, mcfg, profiles, chat, bubble, names, toast, liked, hist } = s;
   const song = queue[idx] || null;
 
-  const [tab, setTab] = useState("rec"); // rec | lists | chat
+  const [tab, setTab] = useState("rec"); // rec | lists | hist | chat
   const [lists, setLists] = useState([]);
   const [openList, setOpenList] = useState(null);
   const [tracks, setTracks] = useState([]);
@@ -266,12 +278,47 @@ export function MusicPanel({ onExit }) {
           >
             <ListMusic size={14} /> 歌单
           </button>
+          <button type="button" className={tab === "hist" ? "on" : ""} onClick={() => setTab("hist")}>
+            <History size={14} /> 历史
+          </button>
           <button type="button" className={tab === "chat" ? "on" : ""} onClick={() => setTab("chat")}>
             <MessageCircle size={14} /> 聊聊
           </button>
         </div>
 
-        {tab !== "chat" && (
+        {tab === "hist" && (
+          <div className="mu-list">
+            {!hist.length && <div className="mu-empty">放过的歌会出现在这里，错过了可以回来再点一遍。</div>}
+            {hist.map((t, i) => (
+              <button
+                type="button"
+                key={t.id}
+                className={`mu-row ${song?.id === t.id ? "cur" : ""}`}
+                onClick={() => {
+                  playFromHistory(i);
+                  toTop();
+                }}
+              >
+                {t.cover ? <img src={t.cover + "?param=80y80"} alt="" /> : <span className="mu-ph" />}
+                <span className="mu-rt">
+                  <b>{t.name}</b>
+                  <i>
+                    {t.artist}
+                    {t.at ? ` · ${ago(t.at)}` : ""}
+                  </i>
+                </span>
+                {liked.includes(t.id) && <Heart size={13} fill="currentColor" className="mu-mark" />}
+              </button>
+            ))}
+            {hist.length > 0 && (
+              <button type="button" className="mu-link" style={{ marginTop: 10 }} onClick={clearHist}>
+                清空播放历史
+              </button>
+            )}
+          </div>
+        )}
+
+        {tab !== "chat" && tab !== "hist" && (
           <div className="mu-list">
             {tab === "lists" && openList && openList.id !== "rec" && (
               <button type="button" className="mu-back" onClick={() => setOpenList(null)}>
@@ -383,6 +430,12 @@ function cablePath(dx, side) {
 function Pair({ theme, names, bubble, hisAtt, iLike, playing }) {
   const [phase, setPhase] = useState("wait"); // wait → meet（动画中）→ joined
   const [k, setK] = useState(0); // 0 = 分开，1 = 贴住
+  const [joinGone, setJoinGone] = useState(false); // 「加入和你一起听啦」显示几秒后收起
+  useEffect(() => {
+    if (phase !== "joined") return;
+    const t = setTimeout(() => setJoinGone(true), 4000);
+    return () => clearTimeout(t);
+  }, [phase]);
   useEffect(() => {
     const reduce = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
     let raf = 0;
@@ -436,7 +489,7 @@ function Pair({ theme, names, bubble, hisAtt, iLike, playing }) {
           <path className="c2" d={cablePath(dx, "r")} />
         </svg>
       </div>
-      <div className={`mu-join ${phase}`} aria-live="polite">
+      <div className={`mu-join ${phase} ${joinGone ? "gone" : ""}`} aria-live="polite">
         {phase === "joined" ? (
           <span key="in">{who} 加入和你一起听啦！</span>
         ) : (
@@ -805,6 +858,8 @@ const CSS = `
 .mu-join{text-align:center;font-size:14px;letter-spacing:.06em;color:var(--dim);min-height:22px;margin:2px 0 6px}
 .mu-join span{display:inline-block;animation:mujoin .45s ease}
 .mu-join.joined{color:var(--ink)}
+.mu-join{max-height:30px;overflow:hidden;transition:opacity .6s ease,max-height .6s ease .3s,margin .6s ease .3s}
+.mu-join.gone{opacity:0;max-height:0;min-height:0;margin:0}
 @keyframes mujoin{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .mu-ell i{font-style:normal;animation:muell 1.4s infinite}
 .mu-ell i:nth-child(2){animation-delay:.2s}.mu-ell i:nth-child(3){animation-delay:.4s}

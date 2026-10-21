@@ -73,6 +73,38 @@ function parseLrc(text) {
   return out.sort((a, b) => a.t - b.t);
 }
 
+/* ------------------------------------------------------------ 播放历史 */
+
+const HKEY = "uranus.music.hist.v1";
+const HMAX = 200;
+function loadHist() {
+  try {
+    const a = JSON.parse(localStorage.getItem(HKEY) || "[]");
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
+function pushHist(s) {
+  if (!s?.id) return;
+  const item = { id: s.id, name: s.name, artist: s.artist, cover: s.cover, dur: s.dur, at: Date.now() };
+  const hist = [item, ...st.hist.filter((h) => h.id !== s.id)].slice(0, HMAX);
+  set({ hist });
+  try {
+    localStorage.setItem(HKEY, JSON.stringify(hist));
+  } catch {
+    /* ignore */
+  }
+}
+export function clearHist() {
+  set({ hist: [] });
+  try {
+    localStorage.removeItem(HKEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /* ------------------------------------------------------------ 状态 */
 
 let st = {
@@ -90,6 +122,7 @@ let st = {
   names: { c: "Loki", u: "" },
   toast: "",
   liked: [], // 我在网易云「喜欢的音乐」里的歌曲 id
+  hist: loadHist(), // 播放历史（最新的在前），只存在这台设备上
 };
 const subs = new Set();
 const emit = () => subs.forEach((f) => f());
@@ -157,6 +190,20 @@ if (audio) {
 }
 
 const cur = () => st.queue[st.idx] || null;
+/** 当前这一句前后几句歌词，当前句前面标「▶」，给 Ta 评论 / 聊天时看上下文用。 */
+const LYRIC_BEFORE = 3, LYRIC_AFTER = 3;
+const lyricCtx = () => {
+  const L = st.lrc;
+  if (!L.length) return "";
+  const t = audio?.currentTime || 0;
+  let k = -1;
+  for (let i = 0; i < L.length; i++) if (L[i].t <= t + 0.2) k = i;
+  const from = Math.max(0, k - LYRIC_BEFORE), to = Math.min(L.length - 1, Math.max(k, 0) + LYRIC_AFTER);
+  const out = [];
+  if (k < 0) out.push("▶ （前奏，还没唱）");
+  for (let i = from; i <= to; i++) out.push((i === k ? "▶ " : "  ") + L[i].s);
+  return out.join("\n");
+};
 const lineNow = () => {
   let k = -1;
   const t = audio?.currentTime || 0;
@@ -247,6 +294,7 @@ function advancePrefetched() {
   const pr = audio.play();
   set({ idx: p.idx, lrc: [], pos: 0, dur: s.dur || 0 });
   syncSession();
+  pushHist(s);
   if (p.skipped.length) say(`「${p.skipped.join("」「")}」放不了，已跳过`);
   else if (p.trial) say("这首只有试听片段（会员歌曲）");
   pr?.catch?.(() => {
@@ -291,6 +339,7 @@ export async function play(list, i) {
       return;
     }
     if (it.freeTrialInfo) say("这首只有试听片段（会员歌曲）");
+    pushHist(s);
     audio.src = https(it.url);
     await audio.play().catch(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") resumeOnVisible = true;
@@ -300,6 +349,19 @@ export async function play(list, i) {
     say(e.message);
   }
   loadLyric(s);
+}
+/**
+ * 从播放历史里点一首：插到当前队列里正在放的那首后面并马上播放，
+ * 放完接着原来的歌单往下走；什么都没在放时，就把历史当成队列。
+ */
+export function playFromHistory(i) {
+  const h = st.hist[i];
+  if (!h) return;
+  if (!st.queue.length || st.idx < 0) return play([...st.hist], i);
+  const q = [...st.queue];
+  q.splice(st.idx + 1, 0, h);
+  if (st.idx >= 0) history.push(st.idx);
+  play(q, st.idx + 1);
 }
 /** 一键播放整个列表：随机模式从随机一首开始，其他从第一首开始。 */
 export function playAll(list) {
@@ -481,7 +543,7 @@ export async function sendChat(text) {
   const sb = s ? brief(s) : null;
   set({ chat: [...st.chat, { id: "u" + Date.now(), role: "user", text, song: sb }] });
   try {
-    const d = await cx("/music/chat", { method: "POST", body: { text, song: sb || {}, lyricLine: lineNow() } });
+    const d = await cx("/music/chat", { method: "POST", body: { text, song: sb || {}, lyricLine: lineNow(), lyrics: lyricCtx() } });
     if (d.reply) {
       set({ chat: [...st.chat, { id: "c" + Date.now(), role: "character", text: d.reply, kind: "chat", song: sb }] });
       showBubble(d.reply);
@@ -524,7 +586,7 @@ function scheduleRoll() {
     try {
       const d = await cx("/music/react", {
         method: "POST",
-        body: { song: brief(s), lyricLine: lineNow(), position: audio.currentTime, allowSkip: wantSkip, priorAttitude: prior, wantText: wantText || wantSkip, wantAttitude: wantAtt },
+        body: { song: brief(s), lyricLine: lineNow(), lyrics: lyricCtx(), position: audio.currentTime, allowSkip: wantSkip, priorAttitude: prior, wantText: wantText || wantSkip, wantAttitude: wantAtt },
       });
       set({ att: d.attitudes || st.att });
       if (d.text) {
