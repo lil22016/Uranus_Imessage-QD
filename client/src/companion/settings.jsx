@@ -633,6 +633,166 @@ function Diag() {
   );
 }
 
+/*
+ * 识图：你发朋友圈的图片要先「看懂」，角色才能评论。
+ * 默认用 Companion 主模型 —— 先发一张小红图问它是什么颜色，答得出来就算能识图；
+ * 答不出来就在这里另选（或新加）一个专门识图的模型。
+ */
+function VisionCard({ s, up, save, ctx, profiles, providers }) {
+  const { data, toast, load } = ctx;
+  const [busy, setBusy] = useState("");
+  const v = s.vision || {};
+  const src = v.source === "profile" || v.source === "uranus" ? v.source : "auto";
+  const main = profiles.find((p) => p.id === s.agent?.profileId);
+  const chk = data.visionCheck;
+  const stale = chk && main && chk.model !== main.model;
+  const pickedProvider = providers.find((p) => p.id === v.uranusProviderId);
+  const selChk = data.visionCheckSelected;
+
+  async function check(target) {
+    setBusy(target);
+    try {
+      await save(true); // 检测的是保存后的设置
+      const r = await cx("/vision/check", { method: "POST", body: { target } });
+      await load();
+      toast(r.check.ok ? `「${r.check.label}」能识图` : `「${r.check.label}」看不了图`);
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+  function addDedicated() {
+    const id = newId();
+    up(["modelProfiles"], [...profiles, { id, name: "识图模型", model: "", baseUrl: "", apiKey: "", path: "/chat/completions", temperature: null, _open: true }]);
+    up(["vision"], { ...v, source: "profile", profileId: id });
+    toast("在上面「模型」里填好这个识图模型，再保存");
+  }
+
+  return (
+    <div className="card">
+      <h3>识图（朋友圈里的图片）</h3>
+      {!main ? (
+        <div className="vstat no">还没选 Companion 用的模型。</div>
+      ) : !chk || stale ? (
+        <div className="vstat">主模型「{main.name || main.model}」还没检测过能不能识图（第一次用到图片时也会自动检测）。</div>
+      ) : chk.ok ? (
+        <div className="vstat ok">主模型「{chk.label}」能识图 ✓</div>
+      ) : (
+        <div className="vstat no">
+          主模型「{chk.label}」看不了图片{chk.error ? `（${chk.error}）` : ""}。{src === "auto" ? "请在下面另选一个能识图的模型，不然角色看不到你发的图。" : ""}
+        </div>
+      )}
+      <div className="row" style={{ flexWrap: "wrap", marginBottom: 12 }}>
+        <button type="button" className="pill" disabled={!!busy || !main} onClick={() => check("main")}>
+          {busy === "main" ? "检测中…" : "检测主模型"}
+        </button>
+        {src === "auto" && chk && !chk.ok && !stale && (
+          <button type="button" className="pill solid" onClick={addDedicated}>
+            + 添加一个识图模型
+          </button>
+        )}
+      </div>
+      <Field label="识图用哪个模型">
+        <select value={src} onChange={(e) => up(["vision", "source"], e.target.value)}>
+          <option value="auto">跟 Companion 主模型一样（它得能识图）</option>
+          <option value="profile">从上面「模型」里另选一个</option>
+          <option value="uranus">用 Uranus「连接」里的模型</option>
+        </select>
+      </Field>
+      {src === "profile" && (
+        <Field label="识图模型">
+          <select value={v.profileId || ""} onChange={(e) => up(["vision", "profileId"], e.target.value)}>
+            <option value="">选一个…</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name || p.model || "未命名"}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      {src === "uranus" && (
+        <div className="two">
+          <Field label="连接">
+            <select value={v.uranusProviderId || ""} onChange={(e) => up(["vision"], { ...v, uranusProviderId: e.target.value, model: "" })}>
+              <option value="">选一个…</option>
+              {providers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name?.trim() || p.id}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="模型">
+            <select value={v.model || ""} onChange={(e) => up(["vision", "model"], e.target.value)}>
+              <option value="">选一个…</option>
+              {(pickedProvider?.models || [])
+                .filter((m) => m?.model)
+                .map((m) => (
+                  <option key={m.model} value={m.model}>
+                    {m.alias?.trim() || m.model}
+                  </option>
+                ))}
+            </select>
+          </Field>
+        </div>
+      )}
+      {src !== "auto" && (
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <button type="button" className="pill" disabled={!!busy} onClick={() => check("selected")}>
+            {busy === "selected" ? "检测中…" : "检测这个识图模型"}
+          </button>
+          {selChk && (
+            <span className="meta">
+              上次检测「{selChk.label}」：{selChk.ok ? "能识图 ✓" : `不行（${selChk.error || "没看到图"}）`}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MomentsCard({ s, up }) {
+  const m = s.moments || {};
+  const set = (k, v) => up(["moments", k], v);
+  const box = (k, label, dflt = true) => (
+    <label className="check" style={{ marginBottom: 6 }}>
+      <input type="checkbox" checked={m[k] ?? dflt} onChange={(e) => set(k, e.target.checked)} /> {label}
+    </label>
+  );
+  return (
+    <div className="card">
+      <h3>朋友圈</h3>
+      {box("enabled", "开启朋友圈的自动功能")}
+      {m.enabled !== false && (
+        <>
+          {box("fromMemory", "整理读到新记忆 / 日记时，让 TA 挑适合的发出去（需要上面的「整理」开着）")}
+          {box("autoPost", "TA 自己来访时也可能发一条（需要「角色自己来看看」开着）")}
+          {box("withImage", `发帖时配图（用「图片生成」${s.image?.enabled ? "" : "，现在没开，只会发文字"}）`)}
+          {box("reactToUser", "你发朋友圈后，TA 过一会儿来点赞 / 评论")}
+          <div className="two" style={{ marginTop: 10 }}>
+            <Field label="TA 每天最多自己发几条">
+              <input type="number" min="0" max="10" value={m.maxPerDay ?? 2} onChange={(e) => set("maxPerDay", Number(e.target.value))} />
+            </Field>
+            <span />
+            <Field label="回应最快（分钟后）">
+              <input type="number" min="0" max="120" value={m.minDelay ?? 1} onChange={(e) => set("minDelay", Number(e.target.value))} />
+            </Field>
+            <Field label="回应最慢（分钟后）">
+              <input type="number" min="0" max="240" value={m.maxDelay ?? 6} onChange={(e) => set("maxDelay", Number(e.target.value))} />
+            </Field>
+          </div>
+          <p className="hint faint" style={{ marginTop: 0 }}>
+            「让 TA 发一条」「从记忆挑一条」两个按钮不受次数限制。你的帖子、点赞、评论会和别的互动一起推给 Uranus，聊天时 TA 也知道。
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPage({ ctx }) {
   const { data, load, toast } = ctx;
   const orig = data.settings;
@@ -772,6 +932,8 @@ export function SettingsPage({ ctx }) {
         </button>
       </div>
 
+      <VisionCard s={s} up={up} save={save} ctx={ctx} profiles={profiles} providers={providers} />
+
       <div className="card">
         <h3>人设（给 Companion 里的角色用）</h3>
         <Field label="角色人设">
@@ -889,6 +1051,8 @@ export function SettingsPage({ ctx }) {
         </Field>
       </div>
 
+      <MomentsCard s={s} up={up} />
+
       <div className="card">
         <h3>外观（只影响 Companion）</h3>
         <p className="faint" style={{ marginTop: 0 }}>
@@ -933,7 +1097,7 @@ export function SettingsPage({ ctx }) {
 
       <SessionTools ctx={ctx} />
       <FreshStart ctx={ctx} />
-      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b20 · 整理卡片在「基本」下面</div>
+      <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b21 · 整理卡片在「基本」下面</div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
         <button type="button" className="pill solid" disabled={busy} onClick={() => save()}>
           {busy ? "保存中…" : "保存设置"}

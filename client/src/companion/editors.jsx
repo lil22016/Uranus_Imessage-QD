@@ -28,7 +28,7 @@ export function Field({ label, children }) {
 
 /* ───────────── 图片 ───────────── */
 
-async function compress(file) {
+export async function compress(file) {
   const bmp = await createImageBitmap(file);
   const q = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
   const cv = document.createElement("canvas");

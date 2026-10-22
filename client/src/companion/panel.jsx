@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { addDays, appearanceVars, byTime, cleanCss, cx, dateLabel, ensureFonts, imgUrl, timeLabel, todayIn, touch } from "./api.js";
 import { ActivityEditor, CommentDialog, DiaryEditor, Images, ReactDialog, StatusSheet } from "./editors.jsx";
 import { SettingsPage } from "./settings.jsx";
+import { MomentsPage, momentsUnread } from "./moments.jsx";
 import { CSS } from "./style.js";
 
 /* ───────────── Shadow DOM 外壳 ───────────── */
@@ -77,10 +78,11 @@ function confetti(root) {
 
 /* ───────────── 入口 ───────────── */
 
-const PAGES = ["day", "diary", "feed", "settings"];
+const PAGES = ["day", "diary", "moments", "feed", "settings"];
 const TABS = [
   ["day", "日程", "M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"],
   ["diary", "日记", "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM8 8h7M8 12h7"],
+  ["moments", "朋友圈", "M4 8h3l2-3h6l2 3h3v11H4zM12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"],
   ["feed", "动态", "M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7zM10 20a2 2 0 0 0 4 0"],
   ["settings", "设置", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.3 3h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"],
 ];
@@ -104,7 +106,7 @@ function Icon({ d }) {
 
 /**
  * standalone：整屏的 Companion（Uranus 里点开 Companion、以及 Companion 网站都用它）。
- * 自带顶部标题和底部「日程 / 日记 / 动态 / 设置」切换，不依赖外面有没有侧栏。
+ * 自带顶部标题和底部「日程 / 日记 / 朋友圈 / 动态 / 设置」切换，不依赖外面有没有侧栏。
  * onExit：有的话左上角出现返回键（Uranus 里回主屏幕；网站里不传就没有）。
  */
 /*
@@ -173,6 +175,7 @@ export function CompanionApp({ page, providers = [], standalone = false, deviceS
           <>
             {pageId === "day" && <DayPage ctx={ctx} />}
             {pageId === "diary" && <DiaryPage ctx={ctx} />}
+            {pageId === "moments" && <MomentsPage ctx={ctx} />}
             {pageId === "feed" && <FeedPage ctx={ctx} />}
             {pageId === "settings" && <SettingsPage ctx={ctx} />}
           </>
@@ -206,6 +209,7 @@ export function CompanionApp({ page, providers = [], standalone = false, deviceS
                 <button key={id} type="button" className={pageId === id ? "on" : ""} onClick={() => goPage(id)}>
                   <Icon d={d} />
                   <span>{label}</span>
+                  {id === "moments" && pageId !== "moments" && momentsUnread(data) && <i className="tabdot" aria-label="有新互动" />}
                 </button>
               ))}
             </nav>
