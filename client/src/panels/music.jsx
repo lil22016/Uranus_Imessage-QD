@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, History, Headphones, Heart, ListMusic, Menu, MessageCircle, Minus, Pause, Play, Plus, Repeat1, Send, Settings2, Shuffle, SkipBack, SkipForward, ThumbsDown, X } from "lucide-react";
+import { Check, ChevronLeft, History, Headphones, Heart, ListMusic, Menu, MessageCircle, Minus, Pause, Play, Plus, Repeat1, Send, Settings2, Share2, Shuffle, SkipBack, SkipForward, ThumbsDown, X } from "lucide-react";
+import { ShareLyrics } from "./musicshare.jsx";
 import { useConfig } from "../store.jsx";
 import { cx } from "../companion/api.js";
 import { useTheme } from "../phonehome.jsx";
@@ -72,6 +73,7 @@ export function MusicPanel({ onExit }) {
   const [showLrc, setShowLrc] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const bodyRef = useRef(null);
@@ -192,6 +194,11 @@ export function MusicPanel({ onExit }) {
         <span className="mu-title">
           <Headphones size={16} strokeWidth={1.6} /> Listen Together
         </span>
+        {song && (
+          <button type="button" className="mu-ico" onClick={() => setSharing(true)} aria-label="分享歌词到 iMessage">
+            <Share2 size={18} strokeWidth={1.6} />
+          </button>
+        )}
         <button type="button" className="mu-ico" onClick={() => setSheet(true)} aria-label="音乐设置">
           <Settings2 size={18} strokeWidth={1.6} />
         </button>
@@ -397,6 +404,7 @@ export function MusicPanel({ onExit }) {
       </div>
 
       {toast && <div className="mu-toast">{toast}</div>}
+      {sharing && song && <ShareLyrics song={song} lrc={lrc} lyricNow={lyricNow} names={names} onClose={() => setSharing(false)} />}
       {menu && <TrackMenu onClose={() => setMenu(false)} mode={mode} lists={myLists} song={song} />}
       {sheet && <Settings onClose={() => setSheet(false)} L={L} mcfg={mcfg} profiles={profiles} providers={config?.providers ?? []} myLists={myLists} onNewList={(pl) => setLists((x) => [{ ...pl, creator: { userId: L.uid } }, ...x])} />}
     </div>
@@ -830,6 +838,19 @@ function Settings({ onClose, L, mcfg, profiles, providers, myLists, onNewList })
 /* ------------------------------------------------------------ 样式 */
 
 const CSS = `
+.mu-share{max-height:92vh;overflow-y:auto}
+.mu-sprev{display:block;width:100%;border-radius:12px;margin:8px 0 6px;box-shadow:0 8px 30px #0005}
+.mu-slist{max-height:34vh;overflow-y:auto;border:1px solid var(--l);border-radius:12px;padding:4px;margin:4px 0 10px;-webkit-overflow-scrolling:touch}
+.mu-sline{display:flex!important;align-items:flex-start;gap:10px;width:100%;text-align:left;padding:8px 8px!important;border-radius:9px!important;font-size:14px;line-height:1.45;color:var(--dim)!important}
+.mu-sline.on{color:var(--ink)!important}
+.mu-sline.sel{background:#ffffff14!important;color:var(--ink)!important}
+.mu-sbox{flex:none;width:18px;height:18px;margin-top:1px;border-radius:5px;border:1.5px solid var(--l);display:grid;place-items:center;color:#242128}
+.mu-sline.sel .mu-sbox{background:var(--ac);border-color:var(--ac)}
+.mu-sgo{display:flex!important;align-items:center;justify-content:center;gap:6px;width:100%;padding:12px!important;border-radius:14px!important;background:var(--ac)!important;color:#242128!important;font-weight:650}
+.mu-sgo:disabled{opacity:.45}
+.mu-sgo.ghost{background:#ffffff14!important;color:var(--ink)!important}
+.mu-sbtns{display:flex;gap:8px;margin-top:8px}
+.mu-slink{font-size:12px;color:var(--dim);word-break:break-all;padding:8px 10px;border-radius:10px;background:#ffffff0d;-webkit-user-select:all;user-select:all}
 .mu{--l:#ffffff2e;--ink:#f5f3f1;--dim:#bdb5b3;--ac:#d6c2a8;position:relative;height:100%;display:flex;flex-direction:column;color:var(--ink);
  background:radial-gradient(120% 70% at 20% 0%,#3a3550 0,transparent 60%),radial-gradient(100% 60% at 100% 30%,#2e3a3d 0,transparent 55%),#101117;overflow:hidden}
 .mu *{box-sizing:border-box}

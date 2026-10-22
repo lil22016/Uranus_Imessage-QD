@@ -50,6 +50,11 @@ export async function cx(path, { method = "GET", body } = {}) {
   return data;
 }
 
+/** 不走 JSON 的原始地址（图片、封面转发这类），密码照样带在 ?k= 上。path 里已有查询串时用 & 接。 */
+export const apiUrl = (path) => {
+  const k = auth.key();
+  return `${BASE}${path}${k ? `${path.includes("?") ? "&" : "?"}k=${encodeURIComponent(k)}` : ""}`;
+};
 export const imgUrl = (id) => `${BASE}/image/${encodeURIComponent(id)}${keyQuery()}`;
 export const fontUrl = (id) => `${BASE}/font/${encodeURIComponent(id)}${keyQuery()}`;
 

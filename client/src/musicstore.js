@@ -59,6 +59,7 @@ export const norm = (t) => ({
   name: t.name || "",
   artist: (t.ar || t.artists || []).map((a) => a.name).join(" / "),
   cover: https(t.al?.picUrl || t.album?.picUrl || ""),
+  album: t.al?.name || t.album?.name || "",
   dur: Math.round((t.dt || t.duration || 0) / 1000),
 });
 function parseLrc(text) {
