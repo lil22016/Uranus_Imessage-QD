@@ -11,6 +11,9 @@ export function ChatPanel() {
   const d = config.chat.delay;
   // 老配置里没有这个字段（前端也没有默认值镜像），所以按假处理
   const force = Boolean(config.chat.forceSeparator);
+  // 晚一点回：老配置里没有这一块，按默认值补
+  const rd = { enabled: false, minMinutes: 1, maxMinutes: 3, judgeBusy: false, maxBusyMinutes: 30, ...(config.chat.replyDelay ?? {}) };
+  const updateRd = (patch) => updateChat({ replyDelay: { ...rd, ...patch } });
 
   return (
     <Card title="发送节奏" desc="所有角色共用的收发节奏：气泡怎么拆、连发怎么合并">
@@ -91,6 +94,44 @@ export function ChatPanel() {
             onChange={(v) => updateChat({ forceSeparator: v })}
             label="强制分隔"
           />
+        </div>
+
+        {/* 晚一点回 */}
+        <div>
+          <div className="mb-6 flex items-start justify-between gap-6 border-b border-line pb-3">
+            <div className="min-w-0">
+              <h3 className="font-serif text-h3 text-ink">晚一点回</h3>
+              <p className="mt-1 max-w-[62ch] text-meta leading-relaxed text-ink-faint">
+                合并等待到点之后，再晚一会儿才开始看消息、想怎么回。这段时间里对方那边一直是「已送达」，不会先出「已读」；
+                期间再发的消息会并进同一轮。指令、协助模式、线下模式不受影响。
+              </p>
+            </div>
+            <Switch checked={rd.enabled} onChange={(v) => updateRd({ enabled: v })} label="晚一点回" />
+          </div>
+          {rd.enabled && (
+            <div className="grid grid-cols-1 gap-6">
+              <div className="grid grid-cols-2 gap-6">
+                <NumberField label="平时最少晚" value={rd.minMinutes} min={0} max={60} step={0.5} onChange={(v) => updateRd({ minMinutes: v })} suffix="分钟" />
+                <NumberField label="平时最多晚" value={rd.maxMinutes} min={0} max={60} step={0.5} onChange={(v) => updateRd({ maxMinutes: v })} suffix="分钟" />
+              </div>
+              <div className="flex items-start justify-between gap-6">
+                <div className="min-w-0 max-w-[62ch]">
+                  <p className="text-ui text-ink">让模型判断角色在不在忙</p>
+                  <p className="mt-1 text-meta leading-relaxed text-ink-faint">
+                    每轮先问一次判断模型（用每个角色「主动消息 → 时间判断用哪个模型」那一个，没选就是聊天模型）：按人设、作息、现在几点、
+                    Companion 里的日程和最近的聊天，角色这会儿是不是在上课 / 开会 / 睡觉之类。在忙就按它说的晚回，不忙就按上面平时的随机数。
+                    你的消息明显很急时它会尽快回。
+                  </p>
+                </div>
+                <Switch checked={rd.judgeBusy} onChange={(v) => updateRd({ judgeBusy: v })} label="让模型判断角色在不在忙" />
+              </div>
+              {rd.judgeBusy && (
+                <div className="grid grid-cols-2 gap-6">
+                  <NumberField label="在忙时最多晚" value={rd.maxBusyMinutes} min={5} max={240} step={5} onChange={(v) => updateRd({ maxBusyMinutes: v })} suffix="分钟" />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 消息延迟 */}
