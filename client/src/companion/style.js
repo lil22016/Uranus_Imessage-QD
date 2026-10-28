@@ -167,6 +167,13 @@ mark{background:#e7d6a2;color:#272128}
 /* ───── 整屏模式（Uranus 里打开 Companion / Companion 网站） ───── */
 :host{display:block}
 .cmp.full{position:fixed;left:0;right:0;top:var(--adj-top,0px);bottom:auto;height:calc(var(--app-h,100%) - var(--adj-top,0px) + var(--adj-bottom,0px));max-height:none;max-width:none;margin:0;padding:0;border-radius:0;border:0;min-height:0;overflow:hidden}
+.fapps{position:relative;margin-left:auto}
+.fapps .ficon{margin:0 -6px 0 0}
+.fapps-menu{position:absolute;right:-4px;top:44px;z-index:30;min-width:168px;padding:6px;border-radius:18px;background:linear-gradient(160deg,#30313bf5,#22232cf8);border:1px solid var(--k-line);box-shadow:0 18px 50px #0009}
+.fapps-menu button{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border:0;border-radius:12px;background:none;color:var(--k-ink);font:inherit;font-size:15px;text-align:left;cursor:pointer}
+.fapps-menu button:active{background:#ffffff14}
+.fapps-menu span{font-size:18px}
+.lapp-host{position:absolute;inset:0;z-index:50;background:#101117}
 .cmp.full .fwrap{height:100%;display:flex;flex-direction:column}
 .fhead{flex:none;display:flex;align-items:center;gap:6px;padding:calc(10px + env(safe-area-inset-top)) 14px 8px;max-width:640px;width:100%;margin:0 auto}
 .fbrand small{display:block;font-size:10px;letter-spacing:.16em;color:var(--k-ink-meta)}

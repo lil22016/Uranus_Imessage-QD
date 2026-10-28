@@ -13,6 +13,16 @@ import { ActivityEditor, CommentDialog, DiaryEditor, Images, ReactDialog, Status
 import { SettingsPage } from "./settings.jsx";
 import { MomentsPage, momentsUnread } from "./moments.jsx";
 import { CSS } from "./style.js";
+import { PeriodApp } from "./apps/period.jsx";
+import { FocusApp } from "./apps/focus.jsx";
+import { MapApp } from "./apps/map.jsx";
+
+/* 顶栏右边九宫格里的三个生活小 App（Uranus 主屏幕上也有各自的图标，打开的是同一份界面） */
+const LIFE_APPS = [
+  ["whereabouts", "他的位置", "📍"],
+  ["focus", "专注陪伴", "⏳"],
+  ["period", "经期", "🩸"],
+];
 
 /* ───────────── Shadow DOM 外壳 ───────────── */
 
@@ -121,6 +131,8 @@ export function CompanionApp({ page, providers = [], standalone = false, deviceS
   const [toastText, setToastText] = useState("");
   const toastTimer = useRef(null);
   const [dlg, setDlg] = useState(null); // { kind, ... }
+  const [lifeApp, setLifeApp] = useState(null);
+  const [appsMenu, setAppsMenu] = useState(false);
   const rootRef = useRef(null);
 
   const toast = useCallback((t) => {
@@ -200,6 +212,26 @@ export function CompanionApp({ page, providers = [], standalone = false, deviceS
                 <small>RL7 / SHARED SPACE</small>
                 <h1>Companion</h1>
               </div>
+              <div className="fapps">
+                <button type="button" className="ficon" onClick={() => setAppsMenu((v) => !v)} aria-label="小 App" aria-expanded={appsMenu}>
+                  <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden>
+                    <rect x="4" y="4" width="6" height="6" rx="1.6" />
+                    <rect x="14" y="4" width="6" height="6" rx="1.6" />
+                    <rect x="4" y="14" width="6" height="6" rx="1.6" />
+                    <rect x="14" y="14" width="6" height="6" rx="1.6" />
+                  </svg>
+                </button>
+                {appsMenu && (
+                  <div className="fapps-menu" role="menu">
+                    {LIFE_APPS.map(([id, label, emo]) => (
+                      <button key={id} type="button" role="menuitem" onClick={() => (setLifeApp(id), setAppsMenu(false))}>
+                        <span>{emo}</span>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </header>
             <main className="fmain" ref={mainRef}>
               {pagesBlock}
@@ -241,6 +273,13 @@ export function CompanionApp({ page, providers = [], standalone = false, deviceS
         {dlg?.kind === "react" && <ReactDialog target={dlg.target} library={s.reactionLibrary} ctx={ctx} onClose={() => setDlg(null)} />}
         {dlg?.kind === "comment" && <CommentDialog target={dlg.target} diary={data.diary} ctx={ctx} onClose={() => setDlg(null)} />}
         {toastText && <div className="toast">{toastText}</div>}
+        {lifeApp && (
+          <div className="lapp-host">
+            {lifeApp === "period" && <PeriodApp onExit={() => setLifeApp(null)} />}
+            {lifeApp === "focus" && <FocusApp onExit={() => setLifeApp(null)} />}
+            {lifeApp === "whereabouts" && <MapApp onExit={() => setLifeApp(null)} providers={providers} />}
+          </div>
+        )}
       </div>
     </ShadowHost>
   );

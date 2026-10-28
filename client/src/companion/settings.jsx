@@ -9,6 +9,8 @@ import { useEffect, useRef, useState } from "react";
 import { cx } from "./api.js";
 import { Field } from "./editors.jsx";
 import { ADJ_LIMITS, readAdj, saveAdj } from "./screenadj.js";
+import { MapModelForm } from "./apps/map.jsx";
+import { KitInline } from "./apps/kit.jsx";
 
 const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
@@ -933,6 +935,24 @@ export function SettingsPage({ ctx }) {
       </div>
 
       <VisionCard s={s} up={up} save={save} ctx={ctx} profiles={profiles} providers={providers} />
+      <div className="card">
+        <h3>地图：{s.characterName || "Loki"} 的位置</h3>
+        <p className="faint" style={{ marginTop: 0 }}>
+          「他的位置」那张地图用的：多久判断一次他在哪、用哪个模型、哪些时间不动。这里单独保存，和下面的「保存」按钮无关。
+        </p>
+        <KitInline>
+          <MapModelForm
+            key={JSON.stringify(data.settings.map || {})}
+            initial={data.settings.map || {}}
+            profiles={(data.settings.modelProfiles || []).map((p) => ({ id: p.id, name: p.name || p.model || "未命名", model: p.model || "" }))}
+            mainProfileId={data.settings.agent?.profileId}
+            providers={providers.length ? providers : undefined}
+            name={s.characterName || "Loki"}
+            toast={toast}
+            onSaved={() => load()}
+          />
+        </KitInline>
+      </div>
 
       <div className="card">
         <h3>人设（给 Companion 里的角色用）</h3>

@@ -2,12 +2,15 @@ import {
   AtSign,
   BookOpen,
   Brain,
+  Droplet,
   Headphones,
   Heart,
+  Hourglass,
   Image as ImageIcon,
   Images,
   Instagram,
   ListTree,
+  MapPin,
   MessageSquareText,
   MessagesSquare,
   Server,
@@ -282,6 +285,31 @@ export const NAV = [
      */
     desc: "和角色一起听同一首歌。入口已经留好，播放、歌单和「一起听」的同步之后再接上。",
     anchors: ["一起听"],
+  },
+  /*
+   * 三个生活小 App（数据都在 Companion 的 Worker 里，界面在 companion/apps/）。
+   * 和一起听歌一样整屏打开；小手机主屏幕第二屏会自动出现它们的图标。
+   */
+  {
+    id: "whereabouts",
+    label: "他的位置",
+    icon: MapPin,
+    desc: "一张虚构的小镇地图：他现在在哪、在做什么、今天去过哪些地方。位置由模型按他的日程隔几个小时判断一次，他也能在聊天里自己挪。",
+    anchors: [],
+  },
+  {
+    id: "focus",
+    label: "专注陪伴",
+    icon: Hourglass,
+    desc: "番茄钟 + 让他陪着你学习（从拾心界搬来的 Study with / Stay with）。",
+    anchors: [],
+  },
+  {
+    id: "period",
+    label: "经期",
+    icon: Droplet,
+    desc: "经期记录和预测，可以从拾心界的备份导入旧记录。",
+    anchors: [],
   },
   {
     id: "theater",
