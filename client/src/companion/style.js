@@ -123,6 +123,15 @@ mark{background:rgb(250 230 130 / .55);color:inherit;border-radius:3px;padding:0
 /* 设置 */
 .card{border:1px solid var(--k-line);border-radius:14px;padding:14px 16px;margin-top:16px}
 .card h3{margin:0 0 10px;font:400 17px/1.3 Georgia,"Times New Roman","Songti SC",serif}
+.foldh{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+.foldh .foldarrow{flex:none;color:var(--k-ink-meta);transition:transform .2s}
+.card:not(.folded) .foldh .foldarrow{transform:rotate(180deg)}
+.card.folded>*:not(.foldh){display:none!important}
+.card.folded .foldh{margin:0}
+.savebar{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px -6px 0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-radius:18px;background:#1b1c24e8;border:1px solid var(--k-line);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 -8px 24px #0006}
+.cmp.full .savebar{bottom:-22px}
+.savebar.dirty{border-color:var(--k-accent)}
+.savebar.dirty .meta{color:var(--k-accent)}
 .profile{border:1px solid var(--k-line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
 .profile summary{cursor:pointer}
 .check{display:flex;align-items:center;gap:8px}

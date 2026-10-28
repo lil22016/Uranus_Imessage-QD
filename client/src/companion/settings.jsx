@@ -5,12 +5,32 @@
  * 「手动推送 / 简化会话」「清空重来」也在最下面（SessionTools / FreshStart）。
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cx } from "./api.js";
 import { Field } from "./editors.jsx";
 import { ADJ_LIMITS, readAdj, saveAdj } from "./screenadj.js";
 import { MapModelForm } from "./apps/map.jsx";
 import { KitInline } from "./apps/kit.jsx";
+
+/**
+ * 卡片标题 + 右上角的折叠箭头。每次打开设置页都是全部折叠的，点标题展开需要的那一张。
+ * 折叠靠给外面那张 .card 加 / 去 folded 类：卡片本身的写法不用改。
+ */
+function FoldHead({ children }) {
+  const ref = useRef(null);
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    ref.current?.parentElement?.classList.toggle("folded", !open);
+  }, [open]);
+  return (
+    <h3 ref={ref} className="foldh" role="button" tabIndex={0} aria-expanded={open} onClick={() => setOpen((v) => !v)} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setOpen((v) => !v))}>
+      <span>{children}</span>
+      <svg className="foldarrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    </h3>
+  );
+}
 
 const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
@@ -118,7 +138,7 @@ function GardenCard({ ctx }) {
   }
   return (
     <div className="card">
-      <h3>DDL Garden 连接（只读）</h3>
+      <FoldHead>DDL Garden 连接（只读）</FoldHead>
       <p className="faint" style={{ marginTop: 0 }}>
         Garden 通过这条链接读取 Loki 有具体日期的活动（只读，不能改任何东西；你自己的任务不会被读取）。
         在 Garden 的 ☰ 侧栏 → Loki Appearance → Companion 链接里粘贴一次即可。链接等于一把钥匙，别发给别人。
@@ -197,7 +217,7 @@ function McpCard({ ctx }) {
   }
   return (
     <div className="card">
-      <h3>让 Uranus 里的 Loki 读写 Companion（MCP）</h3>
+      <FoldHead>让 Uranus 里的 Loki 读写 Companion（MCP）</FoldHead>
       <p className="faint" style={{ marginTop: 0 }}>
         聊天时 Loki 可以：查看你的日程和 DDL Garden（只读）、查看/新增自己的活动、把自己的活动标成完成/失败/改计划/取消。
         改你的任何东西都做不到；他改的内容不会再推回 Uranus，不会形成循环。
@@ -269,7 +289,7 @@ function OrganizerCard({ s, up, data, save, ctx }) {
   const c = st?.counts;
   return (
     <div className="card">
-      <h3>整理（从 Uranus 读记忆 / 备忘录 / 日记）</h3>
+      <FoldHead>整理（从 Uranus 读记忆 / 备忘录 / 日记）</FoldHead>
       <p className="faint" style={{ marginTop: 0 }}>
         只读取「今天新增或改过」的记忆和备忘录，以及最近的日记；Uranus 里的日记原文原样同步（评论不会丢）；
         明确的未来计划会被写成角色的活动，日期不明的留在「未排期」。整理用的是下面选的模型，和角色聊天用的模型无关。
@@ -475,7 +495,7 @@ function SessionTools({ ctx }) {
   }
   return (
     <div className="card gap">
-      <h3>手动推送给 Uranus</h3>
+      <FoldHead>手动推送给 Uranus</FoldHead>
       <p className="hint faint">把你在 Companion 里刚做的操作（待办、评论、反应…）推给 Uranus 里的 Loki。原始记录会保留到 Uranus 确认收到为止。</p>
       <div className="profile">
         <div className="row">
@@ -534,7 +554,7 @@ function FreshStart({ ctx }) {
   }
   return (
     <div className="card gap">
-      <h3>清空重来</h3>
+      <FoldHead>清空重来</FoldHead>
       <p className="hint faint">清除日程、日记、动态 / 回执、反应和评论、高亮，以及待推的测试内容。所有设置、模型、人设、表情库和 Uranus 桥接都会保留。</p>
       <div>
         <button type="button" className="pill danger" disabled={busy} onClick={go}>
@@ -673,7 +693,7 @@ function VisionCard({ s, up, save, ctx, profiles, providers }) {
 
   return (
     <div className="card">
-      <h3>识图（朋友圈里的图片）</h3>
+      <FoldHead>识图（朋友圈里的图片）</FoldHead>
       {!main ? (
         <div className="vstat no">还没选 Companion 用的模型。</div>
       ) : !chk || stale ? (
@@ -766,7 +786,7 @@ function MomentsCard({ s, up }) {
   );
   return (
     <div className="card">
-      <h3>朋友圈</h3>
+      <FoldHead>朋友圈</FoldHead>
       {box("enabled", "开启朋友圈的自动功能")}
       {m.enabled !== false && (
         <>
@@ -858,11 +878,14 @@ export function SettingsPage({ ctx }) {
   const setProfile = (i, k, v) => up(["modelProfiles"], profiles.map((p, j) => (j === i ? { ...p, [k]: v } : p)));
   const fonts = data.fonts || [];
   const ap = s.appearance || {};
+  // 和服务器上那份比（模型卡片展开时的 _open 不算修改）
+  const strip = (o) => JSON.stringify({ ...o, map: null, modelProfiles: (o.modelProfiles || []).map(({ _open, ...p }) => p), reactionLibrary: String(Array.isArray(o.reactionLibrary) ? o.reactionLibrary.join(" ") : o.reactionLibrary || "").trim() });
+  const dirty = strip(s) !== strip(orig);
 
   return (
     <>
       <div className="card">
-        <h3>基本</h3>
+        <FoldHead>基本</FoldHead>
         <div className="two">
           <Field label="角色名字">
             <input value={s.characterName || ""} onChange={(e) => up(["characterName"], e.target.value)} />
@@ -886,7 +909,7 @@ export function SettingsPage({ ctx }) {
       <McpCard ctx={ctx} />
 
       <div className="card">
-        <h3>模型</h3>
+        <FoldHead>模型</FoldHead>
         <Field label="Companion 用的模型">
           <select value={s.agent?.profileId || ""} onChange={(e) => up(["agent", "profileId"], e.target.value)}>
             <option value="">未选择</option>
@@ -936,7 +959,7 @@ export function SettingsPage({ ctx }) {
 
       <VisionCard s={s} up={up} save={save} ctx={ctx} profiles={profiles} providers={providers} />
       <div className="card">
-        <h3>地图：{s.characterName || "Loki"} 的位置</h3>
+        <FoldHead>地图：{s.characterName || "Loki"} 的位置</FoldHead>
         <p className="faint" style={{ marginTop: 0 }}>
           「他的位置」那张地图用的：多久判断一次他在哪、用哪个模型、哪些时间不动。这里单独保存，和下面的「保存」按钮无关。
         </p>
@@ -955,7 +978,7 @@ export function SettingsPage({ ctx }) {
       </div>
 
       <div className="card">
-        <h3>人设（给 Companion 里的角色用）</h3>
+        <FoldHead>人设（给 Companion 里的角色用）</FoldHead>
         <Field label="角色人设">
           <textarea value={s.agent?.persona || ""} onChange={(e) => up(["agent", "persona"], e.target.value)} />
         </Field>
@@ -974,7 +997,7 @@ export function SettingsPage({ ctx }) {
       </div>
 
       <div className="card">
-        <h3>角色自己来看看</h3>
+        <FoldHead>角色自己来看看</FoldHead>
         <label className="check">
           <input type="checkbox" checked={!!s.autonomy?.enabled} onChange={(e) => up(["autonomy", "enabled"], e.target.checked)} /> 允许角色自己来访
         </label>
@@ -999,7 +1022,7 @@ export function SettingsPage({ ctx }) {
       </div>
 
       <div className="card">
-        <h3>Uranus 桥接</h3>
+        <FoldHead>Uranus 桥接</FoldHead>
         <label className="check">
           <input type="checkbox" checked={!!s.bridge?.enabled} onChange={(e) => up(["bridge", "enabled"], e.target.checked)} /> 把生活动态推给 Uranus
         </label>
@@ -1012,7 +1035,7 @@ export function SettingsPage({ ctx }) {
       </div>
 
       <div className="card">
-        <h3>图片生成（可选）</h3>
+        <FoldHead>图片生成（可选）</FoldHead>
         <label className="check">
           <input type="checkbox" checked={!!s.image?.enabled} onChange={(e) => up(["image", "enabled"], e.target.checked)} /> 启用
         </label>
@@ -1074,7 +1097,7 @@ export function SettingsPage({ ctx }) {
       <MomentsCard s={s} up={up} />
 
       <div className="card">
-        <h3>外观（只影响 Companion）</h3>
+        <FoldHead>外观（只影响 Companion）</FoldHead>
         <p className="faint" style={{ marginTop: 0 }}>
           “我的一天”和“{s.characterName || "Loki"} 的一天”可以各用各的字体和颜色，像两个人各自手写的日程。{s.characterName || "Loki"} 给你的建议用他自己的样式。
         </p>
@@ -1118,7 +1141,9 @@ export function SettingsPage({ ctx }) {
       <SessionTools ctx={ctx} />
       <FreshStart ctx={ctx} />
       <div className="meta" style={{ marginTop: 14, textAlign: "center" }}>Companion 前端版本 b21 · 整理卡片在「基本」下面</div>
-      <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+      {/* 一直贴在底部：改完模型不用拉到最下面才能保存 */}
+      <div className={`savebar${dirty ? " dirty" : ""}`}>
+        <span className="meta">{dirty ? "有没保存的修改" : "已是最新"}</span>
         <button type="button" className="pill solid" disabled={busy} onClick={() => save()}>
           {busy ? "保存中…" : "保存设置"}
         </button>

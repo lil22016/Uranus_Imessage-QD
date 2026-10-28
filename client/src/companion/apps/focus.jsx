@@ -78,6 +78,7 @@ export function FocusApp({ onExit }) {
   const [bump, setBump] = useState(0);
   const [settings, setSettings] = useState(false);
   const [history, setHistory] = useState(false);
+  const [adjust, setAdjust] = useState(null); // 正在调的那一份 {scale,x,y,flip}，null = 没在调
   const [stayFrom] = useState(Date.now());
   const audio = useRef(null);
   const wake = useRef(null);
@@ -196,6 +197,7 @@ export function FocusApp({ onExit }) {
     say(next === "focus" ? pick(lines.study) : pick(lines.soft));
   }
   function poke() {
+    if (adjust) return;
     setBump((b) => b + 1);
     if (mode === "stay") say(pick(lines.stay));
     else say(timer.phase === "focus" && timer.running ? pick(lines.tease) : pick(Math.random() < 0.5 ? lines.tease : lines.study));
@@ -217,6 +219,9 @@ export function FocusApp({ onExit }) {
   const todays = data.log.filter((x) => x.date === today);
   const todayMin = todays.reduce((s, x) => s + x.minutes, 0);
   const art = cfg.art || {};
+  // Study 和 Stay 各一份大小 / 位置；在调的时候用草稿实时预览
+  const lay = adjust || { ...(art[mode] || { scale: 100, x: 0, y: 0 }), flip: art.flip };
+  const modeName = mode === "study" ? "Study" : "Stay";
   const stayMin = Math.floor((now - stayFrom) / 60000);
 
   return (
@@ -251,9 +256,10 @@ export function FocusApp({ onExit }) {
       <div className={`fc-stage ${mode}`} onClick={poke}>
         <div className="fc-glow" />
         <div className={`fc-bubble${bubble ? " on" : ""}`}>{bubble}</div>
-        <div className="fc-art" style={{ "--x": `${art.x || 0}px`, "--y": `${art.y || 0}px` }}>
+        <div className="fc-art" style={{ "--x": `${lay.x || 0}px`, "--y": `${lay.y || 0}px` }}>
+          <div className={`fc-breathe${cfg.breathe !== false ? " on" : ""}`}>
           {art.imageId ? (
-            <img key={bump} className="fc-img bounce" src={imgUrl(art.imageId)} alt={name} style={{ "--s": (art.scale || 100) / 100, "--f": art.flip ? -1 : 1 }} draggable={false} />
+            <img key={bump} className={`fc-img${bump ? " bounce" : ""}`} src={imgUrl(art.imageId)} alt={name} style={{ "--s": (lay.scale || 100) / 100, "--f": lay.flip ? -1 : 1 }} draggable={false} />
           ) : (
             <div className="fc-ph">
               <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.1" aria-hidden>
@@ -264,11 +270,31 @@ export function FocusApp({ onExit }) {
               <small>在设置里上传一张透明底的立绘</small>
             </div>
           )}
+          </div>
         </div>
-        {mode === "stay" && <div className="fc-staycount">{stayMin < 1 ? "他在这儿" : `已经陪了你 ${stayMin} 分钟`}</div>}
+        {mode === "stay" && !adjust && <div className="fc-staycount">{stayMin < 1 ? "他在这儿" : `已经陪了你 ${stayMin} 分钟`}</div>}
       </div>
 
-      {mode === "study" && (
+      {adjust && (
+        <AdjustPanel
+          title={`调整 ${modeName} 里的立绘`}
+          draft={adjust}
+          setDraft={setAdjust}
+          onCancel={() => setAdjust(null)}
+          onSave={async () => {
+            try {
+              const r = await cx("/focus/cfg", { method: "PUT", body: { art: { flip: adjust.flip, [mode]: { scale: adjust.scale, x: adjust.x, y: adjust.y } } } });
+              setData({ ...data, cfg: r.cfg });
+              setAdjust(null);
+              toast(`${modeName} 的立绘位置已保存`);
+            } catch (e) {
+              toast(e.message);
+            }
+          }}
+        />
+      )}
+
+      {mode === "study" && !adjust && (
         <div className="fc-panel">
           <input className="fc-task" value={timer.task} placeholder="我们在做什么？" maxLength={80} onChange={(e) => put({ ...timer, task: e.target.value })} />
           <div className="fc-phase">{timer.phase === "focus" ? "FOCUS" : timer.phase === "long" ? "LONG BREAK" : "BREAK"}</div>
@@ -304,7 +330,7 @@ export function FocusApp({ onExit }) {
         </div>
       )}
 
-      {settings && <FocusSettings cfg={cfg} name={name} onClose={() => setSettings(false)} onSaved={(c) => (setData({ ...data, cfg: c }), toast("已保存"))} toast={toast} timer={timer} put={put} minutesOf={minutesOf} />}
+      {settings && <FocusSettings cfg={cfg} name={name} modeName={modeName} onAdjust={() => (setSettings(false), setAdjust({ ...(cfg.art?.[mode] || { scale: 100, x: 0, y: 0 }), flip: !!cfg.art?.flip }))} onClose={() => setSettings(false)} onSaved={(c) => (setData({ ...data, cfg: c }), toast("已保存"))} toast={toast} timer={timer} put={put} minutesOf={minutesOf} />}
       {history && <FocusHistory log={data.log} today={today} onClose={() => setHistory(false)} onDelete={async (id) => {
         try {
           await cx(`/focus/log/${id}`, { method: "DELETE" });
@@ -318,13 +344,14 @@ export function FocusApp({ onExit }) {
   );
 }
 
-function FocusSettings({ cfg, name, onClose, onSaved, toast, timer, put, minutesOf }) {
+function FocusSettings({ cfg, name, modeName, onAdjust, onClose, onSaved, toast, timer, put, minutesOf }) {
   const [c, setC] = useState(() => JSON.parse(JSON.stringify(cfg)));
   const [txt, setTxt] = useState(() => Object.fromEntries(Object.keys(DEFAULT_LINES).map((k) => [k, (cfg.lines?.[k]?.length ? cfg.lines[k] : DEFAULT_LINES[k]).join("\n")])));
   const [busy, setBusy] = useState("");
   const fileRef = useRef(null);
   const art = c.art || {};
   const setArt = (k, v) => setC({ ...c, art: { ...art, [k]: v } });
+  const dirtyOther = JSON.stringify({ ...c, art: null }) !== JSON.stringify({ ...cfg, art: null });
 
   async function save() {
     setBusy("save");
@@ -366,7 +393,7 @@ function FocusSettings({ cfg, name, onClose, onSaved, toast, timer, put, minutes
 
   return (
     <Sheet
-      title="设置"
+      title={`设置 · ${modeName}`}
       onClose={onClose}
       tall
       footer={
@@ -375,7 +402,7 @@ function FocusSettings({ cfg, name, onClose, onSaved, toast, timer, put, minutes
         </button>
       }
     >
-      <h4 className="fc-h">立绘</h4>
+      <h4 className="fc-h">立绘 · 现在是 {modeName}</h4>
       <div className="fc-artset">
         <div className="fc-thumb">{art.imageId ? <img src={imgUrl(art.imageId)} alt="" style={{ transform: `scaleX(${art.flip ? -1 : 1})` }} /> : <span>无</span>}</div>
         <div className="la-row" style={{ flex: 1 }}>
@@ -390,22 +417,20 @@ function FocusSettings({ cfg, name, onClose, onSaved, toast, timer, put, minutes
           )}
         </div>
       </div>
-      {[
-        ["scale", "大小", 40, 180, "%"],
-        ["x", "左右", -200, 200, ""],
-        ["y", "上下", -220, 220, ""],
-      ].map(([k, label, a, b, u]) => (
-        <label key={k} className="fc-slider">
-          <span>{label}</span>
-          <input type="range" min={a} max={b} value={art[k] ?? (k === "scale" ? 100 : 0)} onChange={(e) => setArt(k, Number(e.target.value))} />
-          <b>
-            {art[k] ?? (k === "scale" ? 100 : 0)}
-            {u}
-          </b>
-        </label>
-      ))}
-      <Toggle checked={art.flip} onChange={(v) => setArt("flip", v)} label="镜像翻转" />
-      <p className="la-meta">位置和大小保存后生效；上传 PNG / WebP 透明底效果最好。</p>
+      <button
+        type="button"
+        className="la-btn block"
+        disabled={!art.imageId}
+        onClick={() => {
+          if (dirtyOther && !window.confirm("上面改的计时 / 台词还没保存，去调立绘会丢掉这些修改。继续？")) return;
+          onAdjust();
+        }}
+      >
+        调整 {modeName} 里的大小和位置
+      </button>
+      <p className="la-meta">Study 和 Stay 的布局不一样，各存一份。在哪个模式里打开设置，调的就是哪个模式的；调的时候直接在立绘上看效果。</p>
+      <Toggle checked={c.breathe !== false} onChange={(v) => setC({ ...c, breathe: v })} label="呼吸效果" hint="没在点他的时候也会轻轻上下起伏" />
+      <p className="la-meta">上传 PNG / WebP 透明底效果最好。</p>
 
       <h4 className="fc-h">计时</h4>
       <div className="la-two">
@@ -436,6 +461,52 @@ function FocusSettings({ cfg, name, onClose, onSaved, toast, timer, put, minutes
         全部恢复默认台词
       </button>
     </Sheet>
+  );
+}
+
+/** 直接盖在舞台下方的小面板：边拖边看 */
+function AdjustPanel({ title, draft, setDraft, onCancel, onSave }) {
+  const [busy, setBusy] = useState(false);
+  const row = (k, label, a, b, unit = "") => (
+    <label className="fc-slider">
+      <span>{label}</span>
+      <input type="range" min={a} max={b} value={draft[k]} onChange={(e) => setDraft({ ...draft, [k]: Number(e.target.value) })} />
+      <b>
+        {draft[k]}
+        {unit}
+      </b>
+    </label>
+  );
+  return (
+    <div className="fc-panel fc-adjust">
+      <div className="fc-adj-head">
+        <b>{title}</b>
+        <button type="button" className="la-btn ghost" onClick={() => setDraft({ ...draft, scale: 100, x: 0, y: 0 })}>
+          复位
+        </button>
+      </div>
+      {row("scale", "大小", 40, 200, "%")}
+      {row("x", "左右", -220, 220)}
+      {row("y", "上下", -260, 260)}
+      <Toggle checked={draft.flip} onChange={(v) => setDraft({ ...draft, flip: v })} label="镜像翻转（两个模式共用）" />
+      <div className="fc-adj-btns">
+        <button type="button" className="la-btn" onClick={onCancel}>
+          取消
+        </button>
+        <button
+          type="button"
+          className="la-btn solid"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            await onSave();
+            setBusy(false);
+          }}
+        >
+          {busy ? "保存中…" : "保存"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -482,6 +553,10 @@ const CSS = `
 .fc-stage{position:relative;flex:1;min-height:0;overflow:hidden;cursor:pointer;-webkit-user-select:none;user-select:none}
 .fc-glow{position:absolute;left:50%;bottom:-10%;width:130%;max-width:620px;aspect-ratio:1;transform:translateX(-50%);border-radius:50%;background:radial-gradient(circle,#e7c58f2e 0,#e7c58f0d 40%,transparent 66%);pointer-events:none}
 .fc-art{position:absolute;left:50%;bottom:0;transform:translate(calc(-50% + var(--x)),var(--y));height:100%;width:100%;max-width:520px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none}
+.fc-breathe{height:100%;width:100%;display:flex;align-items:flex-end;justify-content:center;transform-origin:50% 100%}
+.fc-breathe.on{animation:fcBreathe 5.2s ease-in-out infinite}
+@keyframes fcBreathe{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-5px) scale(1.018,1.012)}}
+@media (prefers-reduced-motion:reduce){.fc-breathe.on{animation-duration:9s}}
 .fc-img{max-height:100%;max-width:100%;object-fit:contain;transform-origin:50% 100%;transform:scale(var(--s)) scaleX(var(--f));filter:drop-shadow(0 18px 30px #0009)}
 .fc-img.bounce{animation:fcBounce .5s cubic-bezier(.3,1.6,.5,1)}
 @keyframes fcBounce{0%{transform:scale(var(--s)) scaleX(var(--f))}35%{transform:scale(calc(var(--s)*1.03),calc(var(--s)*.97)) scaleX(var(--f))}100%{transform:scale(var(--s)) scaleX(var(--f))}}
@@ -507,6 +582,12 @@ const CSS = `
 .fc-dots{display:inline-flex;gap:5px}
 .fc-dots i{width:7px;height:7px;border-radius:50%;background:#ffffff22}
 .fc-dots i.on{background:var(--ac)}
+.fc-adjust{text-align:left;padding:12px 16px 12px}
+.fc-adj-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+.fc-adj-head b{font:400 16px Georgia,"Songti SC",serif}
+.fc-adj-head .la-btn{min-height:32px;padding:0 12px!important;font-size:13px}
+.fc-adj-btns{display:flex;gap:8px;margin-top:8px}
+.fc-adj-btns>*{flex:1}
 .fc-h{margin:18px 0 10px;font:400 16px Georgia,"Songti SC",serif}
 .fc-h:first-child{margin-top:4px}
 .fc-artset{display:flex;gap:12px;align-items:center;margin-bottom:10px}
