@@ -45,6 +45,7 @@ export function MapApp({ onExit, avatars = {}, providers }) {
   const [placing, setPlacing] = useState(null); // {what:'place', id} | {what:'me'}
   const [selPlace, setSelPlace] = useState("");
   const [inside, setInside] = useState(""); // 正在看哪个地点的子地图（房间平面图）
+  const [drop, setDrop] = useState(null); // 在小镇地图空白处点了一下：{x,y}，等你确认「我在这儿」
   const [day, setDay] = useState("");
   const [busy, setBusy] = useState("");
   const mapApi = useRef(null);
@@ -98,6 +99,7 @@ export function MapApp({ onExit, avatars = {}, providers }) {
   const hereRoom = (here?.rooms || []).find((r) => r.id === st.roomId);
   const meta = data?.meta || {};
   const mePos = meta.me?.visible === false ? null : meta.me?.placeId && byId[meta.me.placeId] ? { x: byId[meta.me.placeId].x, y: byId[meta.me.placeId].y, place: byId[meta.me.placeId] } : meta.me?.x != null ? { x: meta.me.x, y: meta.me.y } : null;
+  const meRoom = mePos?.place ? (mePos.place.rooms || []).find((r) => r.id === meta.me?.roomId) : null;
   const himImg = meta.avatarRole ? imgUrl(meta.avatarRole) : avatars.role || "";
   const meImg = meta.avatarUser ? imgUrl(meta.avatarUser) : avatars.user || "";
 
@@ -141,16 +143,32 @@ export function MapApp({ onExit, avatars = {}, providers }) {
     }
     const pid = target?.closest?.("[data-pid]")?.getAttribute("data-pid");
     const who = target?.closest?.("[data-who]")?.getAttribute("data-who");
+    setDrop(null);
     if (who === "him" && here) {
       setTab("status");
       return;
     }
-    if (pid && byId[pid]) {
-      setSelPlace(pid);
-      setSheet({ kind: "place", place: byId[pid] });
+    if (who === "me") {
+      setSheet({ kind: "me" });
       return;
     }
+    // 点地点图钉：有房间就直接进子地图，没有就打开这个地点
+    if (pid && byId[pid]) {
+      setSelPlace(pid);
+      if ((byId[pid].rooms || []).length) setInside(pid);
+      else setSheet({ kind: "place", place: byId[pid] });
+      return;
+    }
+    // 点空白处：问一句「我在这儿？」，免得拖地图时误触
     setSelPlace("");
+    const pos = { x: Math.round(w.x), y: Math.round(w.y) };
+    if (town.distRiver(pos.x, pos.y) < town.river.w / 2 + 4) return;
+    setDrop(pos);
+  }
+
+  async function putMe(body, msg) {
+    setDrop(null);
+    return act("me", () => cx("/map/meta", { method: "PUT", body: { me: { visible: true, ...body } } }), msg);
   }
 
   if (!data || !town) {
@@ -186,13 +204,19 @@ export function MapApp({ onExit, avatars = {}, providers }) {
             himHere={here?.id === inside}
             roomId={here?.id === inside ? st.roomId : ""}
             meHere={meta.me?.visible !== false && meta.me?.placeId === inside}
+            meRoomId={meta.me?.roomId || ""}
             himImg={himImg}
             meImg={meImg}
             name={name}
             me={me}
             tint={tint}
             onBack={() => setInside("")}
-            onRoom={(room) => setSheet({ kind: "move", placeId: inside, room: room.id })}
+            onRoom={(room) => {
+              // 子地图里点房间 = 把你自己放进去（放 Loki 用「位置」里他那一行的「设置」）
+              if (meta.me?.visible !== false && meta.me?.placeId === inside && meta.me?.roomId === room.id) return;
+              setPlacing(null);
+              putMe({ placeId: inside, roomId: room.id, x: null, y: null }, `你在${byId[inside]?.name || ""}的${room.name}了`);
+            }}
             onEdit={() => setSheet({ kind: "place", place: byId[inside] })}
           />
         )}
@@ -209,13 +233,27 @@ export function MapApp({ onExit, avatars = {}, providers }) {
           route={route}
           tint={tint}
           placing={!!placing}
+          drop={drop}
           hidden={!!(inside && byId[inside])}
           onTap={onMapTap}
           apiRef={mapApi}
         />
-        {placing && (
+        {drop && !placing && !(inside && byId[inside]) && (
           <div className="mp-banner">
-            <span>{placing.what === "me" ? "点地图，放你的位置" : `点地图，把「${byId[placing.id]?.name || ""}」挪过去`}</span>
+            <span>把你放在这里？</span>
+            <span className="la-row" style={{ flexWrap: "nowrap", gap: 6 }}>
+              <button type="button" className="la-btn" onClick={() => setDrop(null)}>
+                取消
+              </button>
+              <button type="button" className="la-btn solid" onClick={() => putMe({ placeId: "", roomId: "", ...drop }, "放好了")}>
+                我在这儿
+              </button>
+            </span>
+          </div>
+        )}
+        {placing && !(inside && byId[inside] && placing.what === "place") && (
+          <div className="mp-banner">
+            <span>{placing.what === "me" ? (inside && byId[inside] ? "点一个房间，把你放进去" : "点地图，放你的位置") : `点地图，把「${byId[placing.id]?.name || ""}」挪过去`}</span>
             <button type="button" className="la-btn" onClick={() => setPlacing(null)}>
               取消
             </button>
@@ -275,6 +313,9 @@ export function MapApp({ onExit, avatars = {}, providers }) {
                     <div className="la-meta">还不知道他在哪。{places.length ? "点下面「现在更新一次」，或者手动设一个。" : "先去「地点」里加几个他常去的地方。"}</div>
                   )}
                 </div>
+                <button type="button" className="la-btn" disabled={!places.length} onClick={() => setSheet({ kind: "move" })}>
+                  设置
+                </button>
               </div>
               <div className="mp-next">
                 {!data.settings.enabled ? (
@@ -294,9 +335,6 @@ export function MapApp({ onExit, avatars = {}, providers }) {
                 <button type="button" className="la-btn solid" disabled={!!busy} onClick={() => act("check", () => cx("/map/check", { method: "POST" }), (r) => (r.moved ? `${name} 去了 ${r.place.name}` : `${name} 还在 ${r.place?.name || ""}`)).then((r) => r?.place && mapApi.current?.focus(r.place.x, r.place.y, 420))}>
                   <Icon n="refresh" size={16} /> {busy === "check" ? "判断中…" : "现在更新一次"}
                 </button>
-                <button type="button" className="la-btn" disabled={!places.length} onClick={() => setSheet({ kind: "move" })}>
-                  手动设置
-                </button>
               </div>
               <p className="la-meta" style={{ marginTop: -8 }}>「现在更新一次」会调一次模型（大约一两千 token）。</p>
 
@@ -304,7 +342,7 @@ export function MapApp({ onExit, avatars = {}, providers }) {
                 <Avatar img={meImg} letter={me} size={44} ring="#9cc3e6" />
                 <div className="mp-pinfo">
                   <b>{me}（你）</b>
-                  <div className="la-meta">{mePos ? (mePos.place ? `在 ${mePos.place.name}` : "在地图上标的位置") : "没有显示在地图上"}</div>
+                  <div className="la-meta">{mePos ? (mePos.place ? `在 ${mePos.place.name}${meRoom ? ` · ${meRoom.name}` : ""}` : "在地图上标的位置") : "没有显示在地图上"}</div>
                   {dist != null && <div className="mp-dist">相距 {dist >= 1000 ? `${(dist / 1000).toFixed(1)} 公里` : `${Math.round(dist / 10) * 10} 米`}</div>}
                 </div>
                 <button type="button" className="la-btn" onClick={() => setSheet({ kind: "me" })}>
@@ -348,7 +386,23 @@ export function MapApp({ onExit, avatars = {}, providers }) {
                         {p.note ? ` · ${p.note}` : ""}
                       </small>
                     </span>
-                    <span className={`mp-by ${p.by}`}>{p.by === "character" ? `${name} 加的` : "你加的"}</span>
+                    <span className="mp-pside">
+                      <span className={`mp-by ${p.by}`}>{p.by === "character" ? `${name} 加的` : "你加的"}</span>
+                      {(p.rooms || []).length > 0 && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="mp-enter"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelPlace(p.id);
+                            setInside(p.id);
+                          }}
+                        >
+                          进入 ›
+                        </span>
+                      )}
+                    </span>
                   </button>
                 ))}
             </>
@@ -405,6 +459,10 @@ export function MapApp({ onExit, avatars = {}, providers }) {
             setInside(sheet.place.id);
             setSheet(null);
           }}
+          onMeHere={async () => {
+            const r = await putMe({ placeId: sheet.place.id, roomId: "", x: null, y: null }, `你在 ${sheet.place.name} 了`);
+            if (r) setSheet(null);
+          }}
         />
       )}
       {sheet?.kind === "move" && (
@@ -434,7 +492,7 @@ export function MapApp({ onExit, avatars = {}, providers }) {
           meta={meta}
           onClose={() => setSheet(null)}
           onPick={async (body) => {
-            const r = await act("me", () => cx("/map/meta", { method: "PUT", body: { me: body } }), "已更新");
+            const r = await act("me", () => cx("/map/meta", { method: "PUT", body: { me: body } }), body.visible === false ? "不显示你了" : "已更新");
             if (r) setSheet(null);
           }}
           onDropPin={() => {
@@ -494,7 +552,7 @@ function visitsOn(visits, d, today) {
 
 /* ═════════════ 地图画布 ═════════════ */
 
-function TownMap({ town, places, here, mePos, himImg, meImg, name, me, selPlace, route, tint, placing, hidden, onTap, apiRef }) {
+function TownMap({ town, places, here, mePos, himImg, meImg, name, me, selPlace, route, tint, placing, drop, hidden, onTap, apiRef }) {
   const boxRef = useRef(null);
   const svgRef = useRef(null);
   const [size, setSize] = useState({ W: 390, H: 400 });
@@ -643,8 +701,9 @@ function TownMap({ town, places, here, mePos, himImg, meImg, name, me, selPlace,
   const k = v.w / size.W; // 一个屏幕像素 = k 个世界单位：图钉按这个反向缩放，大小不随缩放变
   const showLabels = v.w < 640;
 
-  // 他和你在同一个地方时错开一点
+  // 头像浮在地点图钉上方（不盖住图钉，图钉照样能点）；他和你在同一个地方时左右错开
   const same = here && mePos && here.x != null && Math.hypot(here.x - mePos.x, here.y - mePos.y) < 26 * k;
+  const meOnPlace = !!mePos?.place;
 
   return (
     <div className={`mp-map ${tint}${placing ? " placing" : ""}${hidden ? " hidden" : ""}`} ref={boxRef}>
@@ -668,7 +727,7 @@ function TownMap({ town, places, here, mePos, himImg, meImg, name, me, selPlace,
         )}
 
         {places.map((p) =>
-          p.x == null || p.id === here?.id ? null : (
+          p.x == null ? null : (
             <g key={p.id} data-pid={p.id} transform={`translate(${p.x} ${p.y}) scale(${k})`} className={`mp-pin${selPlace === p.id ? " sel" : ""}`}>
               <circle r="22" fill="transparent" />
               <circle r={selPlace === p.id ? 16 : 13} fill={kindOf(p.kind)[1]} stroke="#fffdf8" strokeWidth="2.5" filter="url(#la-sh)" />
@@ -692,22 +751,30 @@ function TownMap({ town, places, here, mePos, himImg, meImg, name, me, selPlace,
           </g>
         ))}
 
+        {drop && (
+          <g transform={`translate(${drop.x} ${drop.y}) scale(${k})`} pointerEvents="none">
+            <circle r="16" fill="#7fb3e3" opacity=".25" />
+            <circle r="5" fill="#7fb3e3" stroke="#fff" strokeWidth="2" />
+          </g>
+        )}
         {mePos && mePos.x != null && (
-          <g transform={`translate(${mePos.x} ${mePos.y}) scale(${k}) translate(${same ? -22 : 0} ${same ? 6 : 0})`} data-who="me" pointerEvents="none">
-            <AvatarPin img={meImg} letter={me} r={15} ring="#7fb3e3" />
+          <g transform={`translate(${mePos.x} ${mePos.y}) scale(${k})`} data-who="me">
+            {meOnPlace ? (
+              <g transform={`translate(${same ? -24 : 0} ${same ? -40 : -44})`}>
+                <path d={`M${same ? 24 : 0},${same ? 27 : 31} L-5,12 L5,12 Z`} fill="#7fb3e3" />
+                <AvatarPin img={meImg} letter={me} r={15} ring="#7fb3e3" />
+              </g>
+            ) : (
+              <AvatarPin img={meImg} letter={me} r={15} ring="#7fb3e3" />
+            )}
           </g>
         )}
         {here?.x != null && (
-          <g transform={`translate(${here.x} ${here.y}) scale(${k}) translate(${same ? 14 : 0} ${same ? -8 : 0})`} data-who="him" className="mp-him">
-            <circle r="20" className="mp-pulse" />
-            <circle r="20" className="mp-pulse two" />
+          <g transform={`translate(${here.x} ${here.y}) scale(${k}) translate(${same ? 18 : 0} -48)`} data-who="him" className="mp-him">
+            <path d={`M${same ? -18 : 0},35 L-6,14 L6,14 Z`} fill="#f0a86d" />
+            <circle r="20" className="mp-pulse" pointerEvents="none" />
+            <circle r="20" className="mp-pulse two" pointerEvents="none" />
             <AvatarPin img={himImg} letter={name} r={19} ring="#f0a86d" />
-            <g transform="translate(0 33)">
-              <rect x={-Math.max(22, name.length * 4.2 + 10)} y="-10" width={Math.max(44, name.length * 8.4 + 20)} height="19" rx="9.5" fill="#2a2321" opacity=".88" />
-              <text y="3.6" textAnchor="middle" className="mp-name">
-                {name}
-              </text>
-            </g>
           </g>
         )}
       </svg>
@@ -904,10 +971,13 @@ function layoutRooms(rooms, rect) {
   return out;
 }
 
-function FloorPlan({ place, himHere, roomId, meHere, himImg, meImg, name, me, tint, onBack, onRoom, onEdit }) {
+function FloorPlan({ place, himHere, roomId, meHere, meRoomId, himImg, meImg, name, me, tint, onBack, onRoom, onEdit }) {
   const W = 1000, H = 700;
   const cells = useMemo(() => layoutRooms(place.rooms || [], { x: 0, y: 0, w: W, h: H }), [place.rooms]);
   const himCell = himHere ? cells.find((c) => c.room.id === roomId) : null;
+  const meCell = meHere ? cells.find((c) => c.room.id === meRoomId) : null;
+  // 你在房间里：放在房间左下角（和他错开）；没说房间就放在大门口
+  const mePt = meCell ? { x: meCell.x + Math.min(72, meCell.w * 0.26), y: meCell.y + meCell.h - Math.min(72, meCell.h * 0.3) } : { x: 60, y: H - 60 };
   return (
     <div className={`mp-floor ${tint}`}>
       <div className="mp-crumb">
@@ -992,7 +1062,7 @@ function FloorPlan({ place, himHere, roomId, meHere, himImg, meImg, name, me, ti
             </g>
           )}
           {meHere && (
-            <g transform={`translate(${60} ${H - 60})`} pointerEvents="none">
+            <g transform={`translate(${mePt.x} ${mePt.y})`} pointerEvents="none">
               <g filter="url(#fp-sh)">
                 <circle r="46" fill="#fffdf8" />
                 <circle r="43" fill="#7fb3e3" />
@@ -1008,7 +1078,8 @@ function FloorPlan({ place, himHere, roomId, meHere, himImg, meImg, name, me, ti
         </svg>
       )}
       <p className="mp-fhint">
-        {himHere ? (himCell ? `${name} 在${himCell.room.name}` : `${name} 在这里，没说在哪个房间`) : `${name} 现在不在这里`} · 点房间可以手动把他放进去
+        {himHere ? (himCell ? `${name} 在${himCell.room.name}` : `${name} 在这里，没说在哪个房间`) : `${name} 现在不在这里`}
+        {meCell ? ` · 你在${meCell.room.name}` : ""} · 点房间把你自己放进去
       </p>
     </div>
   );
@@ -1130,7 +1201,7 @@ const ROOM_PRESETS = {
   gym: [["器械区", "🏋️"], ["更衣室", "🚿"], ["泳池", "🏊"]],
 };
 
-function PlaceSheet({ place, name, isHere, onClose, onSave, onDelete, onMovePin, onSendHim, onEnter }) {
+function PlaceSheet({ place, name, isHere, onClose, onSave, onDelete, onMovePin, onSendHim, onEnter, onMeHere }) {
   const [f, setF] = useState({ name: place?.name || "", kind: place?.kind || "other", note: place?.note || "" });
   const [rooms, setRooms] = useState(() => (place?.rooms || []).map((r) => ({ ...r })));
   const [newRoom, setNewRoom] = useState("");
@@ -1203,6 +1274,9 @@ function PlaceSheet({ place, name, isHere, onClose, onSave, onDelete, onMovePin,
       </div>
       {place && (
         <div className="mp-sheetacts">
+          <button type="button" className="la-btn" onClick={onMeHere}>
+            我在这
+          </button>
           {(place.rooms || []).length > 0 && (
             <button type="button" className="la-btn" disabled={changedRooms} title={changedRooms ? "先保存房间" : ""} onClick={onEnter}>
               进去看看
@@ -1269,18 +1343,40 @@ function MoveSheet({ places, name, initial, initialRoom, activity, busy, onClose
 
 function MeSheet({ places, meta, onClose, onPick, onDropPin }) {
   const cur = meta.me || {};
+  const [pid, setPid] = useState(cur.visible !== false ? cur.placeId || "" : "");
+  const [room, setRoom] = useState(cur.roomId || "");
+  const rooms = places.find((p) => p.id === pid)?.rooms || [];
   return (
-    <Sheet title="你的位置" onClose={onClose}>
+    <Sheet
+      title="你的位置"
+      onClose={onClose}
+      footer={
+        <button type="button" className="la-btn solid" disabled={!pid} onClick={() => onPick({ placeId: pid, roomId: rooms.some((r) => r.id === room) ? room : "", x: null, y: null, visible: true })}>
+          就这样
+        </button>
+      }
+    >
       <p className="la-meta" style={{ marginTop: 0 }}>
-        不会读取你手机的真实定位。选一个地点，或者在地图上点一下，或者干脆不显示。
+        不会读取你手机的真实定位。选一个地点（有房间的还能选房间），或者直接在地图上点一下、在子地图里点房间，或者干脆不显示。
       </p>
       <div className="mp-pickl">
         {places.map((p) => (
-          <button key={p.id} type="button" className={cur.visible !== false && cur.placeId === p.id ? "on" : ""} onClick={() => onPick({ placeId: p.id, x: null, y: null, visible: true })}>
+          <button key={p.id} type="button" className={pid === p.id ? "on" : ""} onClick={() => (setPid(p.id), setRoom(""))}>
             <span>{kindOf(p.kind)[0]}</span> {p.name}
           </button>
         ))}
       </div>
+      {rooms.length > 0 && (
+        <Field label="哪个房间（可以不选）">
+          <div className="mp-pickl" style={{ marginBottom: 0 }}>
+            {rooms.map((r) => (
+              <button key={r.id} type="button" className={room === r.id ? "on" : ""} onClick={() => setRoom(room === r.id ? "" : r.id)}>
+                <span>{r.icon || roomIcon(r)}</span> {r.name}
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
       <div className="mp-sheetacts">
         <button type="button" className="la-btn" onClick={onDropPin}>
           <Icon n="pin" size={16} /> 在地图上点一下
@@ -1582,7 +1678,7 @@ const CSS = `
 .mp-scale{position:absolute;left:12px;bottom:30px;display:flex;flex-direction:column;gap:2px;font-size:10px;color:#5d5243;pointer-events:none}
 .mp-scale i{display:block;height:5px;border:1.5px solid #6d604c;border-top:0}
 .mp-compass{position:absolute;right:12px;bottom:28px;width:36px;height:36px;pointer-events:none}
-.mp-banner{position:absolute;left:12px;right:12px;top:10px;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 8px 8px 14px;border-radius:16px;background:#1d1b20e6;color:#fff;font-size:13px;box-shadow:0 8px 24px #0005}
+.mp-banner{position:absolute;left:12px;right:12px;top:10px;z-index:4;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 8px 8px 14px;border-radius:16px;background:#1d1b20e6;color:#fff;font-size:13px;box-shadow:0 8px 24px #0005}
 .mp-fab[hidden]{display:none}
 .mp-fab{position:absolute;right:12px;top:10px;z-index:2;display:flex;flex-direction:column;gap:8px}
 .mp-fab button{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:#fffdf7f0!important;color:#4c4134;box-shadow:0 6px 18px #0003}
@@ -1614,6 +1710,8 @@ const CSS = `
 .mp-pmain small{font-size:12px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mp-here{font-style:normal;font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:99px;background:#f0a86d;color:#2b1d12}
 .mp-here.me{background:#7fb3e3;color:#10202e}
+.mp-pside{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.mp-enter{font-size:12.5px;font-weight:600;color:var(--ac);padding:3px 10px;border-radius:99px;background:#f0b47e1f}
 .mp-by{flex:none;font-size:10.5px;color:var(--faint);padding:2px 7px;border-radius:99px;border:1px solid #ffffff18}
 .mp-by.character{color:#f3c9a3;border-color:#f0a86d55}
 .mp-days{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
