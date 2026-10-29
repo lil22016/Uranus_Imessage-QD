@@ -44,6 +44,7 @@ export function MapApp({ onExit, avatars = {}, providers }) {
   const [sheet, setSheet] = useState(null); // {kind:'place'|'move'|'me'|'settings'|'visit', ...}
   const [placing, setPlacing] = useState(null); // {what:'place', id} | {what:'me'}
   const [selPlace, setSelPlace] = useState("");
+  const [inside, setInside] = useState(""); // 正在看哪个地点的子地图（房间平面图）
   const [day, setDay] = useState("");
   const [busy, setBusy] = useState("");
   const mapApi = useRef(null);
@@ -94,6 +95,7 @@ export function MapApp({ onExit, avatars = {}, providers }) {
   const byId = useMemo(() => Object.fromEntries(places.map((p) => [p.id, p])), [places]);
   const st = data?.state || {};
   const here = byId[st.placeId];
+  const hereRoom = (here?.rooms || []).find((r) => r.id === st.roomId);
   const meta = data?.meta || {};
   const mePos = meta.me?.visible === false ? null : meta.me?.placeId && byId[meta.me.placeId] ? { x: byId[meta.me.placeId].x, y: byId[meta.me.placeId].y, place: byId[meta.me.placeId] } : meta.me?.x != null ? { x: meta.me.x, y: meta.me.y } : null;
   const himImg = meta.avatarRole ? imgUrl(meta.avatarRole) : avatars.role || "";
@@ -178,6 +180,22 @@ export function MapApp({ onExit, avatars = {}, providers }) {
     >
       <style>{CSS}</style>
       <div className="mp-wrap">
+        {inside && byId[inside] && (
+          <FloorPlan
+            place={byId[inside]}
+            himHere={here?.id === inside}
+            roomId={here?.id === inside ? st.roomId : ""}
+            meHere={meta.me?.visible !== false && meta.me?.placeId === inside}
+            himImg={himImg}
+            meImg={meImg}
+            name={name}
+            me={me}
+            tint={tint}
+            onBack={() => setInside("")}
+            onRoom={(room) => setSheet({ kind: "move", placeId: inside, room: room.id })}
+            onEdit={() => setSheet({ kind: "place", place: byId[inside] })}
+          />
+        )}
         <TownMap
           town={town}
           places={places}
@@ -191,6 +209,7 @@ export function MapApp({ onExit, avatars = {}, providers }) {
           route={route}
           tint={tint}
           placing={!!placing}
+          hidden={!!(inside && byId[inside])}
           onTap={onMapTap}
           apiRef={mapApi}
         />
@@ -202,7 +221,7 @@ export function MapApp({ onExit, avatars = {}, providers }) {
             </button>
           </div>
         )}
-        <div className="mp-fab">
+        <div className="mp-fab" hidden={!!(inside && byId[inside])}>
           {here && (
             <button type="button" onClick={() => mapApi.current?.focus(here.x, here.y, 420)} aria-label={`看${name}`}>
               <Avatar img={himImg} letter={name} size={30} ring="#f1b57a" />
@@ -240,6 +259,12 @@ export function MapApp({ onExit, avatars = {}, providers }) {
                     <>
                       <div className="mp-where">
                         <span>{kindOf(here.kind)[0]}</span> {here.name}
+                        {hereRoom && <em className="mp-room">{hereRoom.icon || roomIcon(hereRoom)} {hereRoom.name}</em>}
+                        {(here.rooms || []).length > 0 && (
+                          <button type="button" className="mp-peek" onClick={() => setInside(here.id)}>
+                            看看里面 ›
+                          </button>
+                        )}
                       </div>
                       {st.activity && <div className="mp-doing">{st.activity}</div>}
                       <div className="la-meta">
@@ -261,6 +286,7 @@ export function MapApp({ onExit, avatars = {}, providers }) {
                 ) : (
                   <span>下次自动更新约 {fmtT(st.nextCheckAt) || "马上"}</span>
                 )}
+                {data.settings.enabled && st.reactAt > Date.now() && <small className="mp-react">你刚换了位置，{name} 大约 {fmtT(st.reactAt)} 会注意到（来不来由他自己决定）</small>}
                 {st.lastReason && <small>上次判断：{st.lastReason}</small>}
                 {st.lastError && <small className="la-err">上次出错：{st.lastError.replace(/^\S+\s/, "")}</small>}
               </div>
@@ -318,6 +344,7 @@ export function MapApp({ onExit, avatars = {}, providers }) {
                       </b>
                       <small>
                         {kindOf(p.kind)[2]}
+                        {p.rooms?.length ? ` · ${p.rooms.length} 个房间` : ""}
                         {p.note ? ` · ${p.note}` : ""}
                       </small>
                     </span>
@@ -374,6 +401,10 @@ export function MapApp({ onExit, avatars = {}, providers }) {
             setSheet(null);
           }}
           onSendHim={() => setSheet({ kind: "move", placeId: sheet.place.id })}
+          onEnter={() => {
+            setInside(sheet.place.id);
+            setSheet(null);
+          }}
         />
       )}
       {sheet?.kind === "move" && (
@@ -381,11 +412,13 @@ export function MapApp({ onExit, avatars = {}, providers }) {
           places={places}
           name={name}
           initial={sheet.placeId || st.placeId}
+          initialRoom={sheet.room || (!sheet.placeId || sheet.placeId === st.placeId ? st.roomId : "")}
           activity={sheet.placeId && sheet.placeId !== st.placeId ? "" : st.activity}
           busy={busy === "move"}
           onClose={() => setSheet(null)}
-          onMove={async (placeId, activity) => {
-            const r = await act("move", () => cx("/map/move", { method: "POST", body: { placeId, activity } }), `${name} 现在在 ${byId[placeId]?.name}`);
+          onMove={async (placeId, activity, room) => {
+            const rm = (byId[placeId]?.rooms || []).find((x) => x.id === room);
+            const r = await act("move", () => cx("/map/move", { method: "POST", body: { placeId, activity, room } }), `${name} 现在在 ${byId[placeId]?.name}${rm ? ` · ${rm.name}` : ""}`);
             if (r) {
               setSheet(null);
               setTab("status");
@@ -461,7 +494,7 @@ function visitsOn(visits, d, today) {
 
 /* ═════════════ 地图画布 ═════════════ */
 
-function TownMap({ town, places, here, mePos, himImg, meImg, name, me, selPlace, route, tint, placing, onTap, apiRef }) {
+function TownMap({ town, places, here, mePos, himImg, meImg, name, me, selPlace, route, tint, placing, hidden, onTap, apiRef }) {
   const boxRef = useRef(null);
   const svgRef = useRef(null);
   const [size, setSize] = useState({ W: 390, H: 400 });
@@ -614,7 +647,7 @@ function TownMap({ town, places, here, mePos, himImg, meImg, name, me, selPlace,
   const same = here && mePos && here.x != null && Math.hypot(here.x - mePos.x, here.y - mePos.y) < 26 * k;
 
   return (
-    <div className={`mp-map ${tint}${placing ? " placing" : ""}`} ref={boxRef}>
+    <div className={`mp-map ${tint}${placing ? " placing" : ""}${hidden ? " hidden" : ""}`} ref={boxRef}>
       <svg ref={svgRef} viewBox={`${v.x} ${v.y} ${v.w} ${h}`} preserveAspectRatio="xMidYMid slice" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} role="img" aria-label="小镇地图">
         <defs>
           <clipPath id="la-clip" clipPathUnits="objectBoundingBox">
@@ -818,6 +851,199 @@ function Avatar({ img, letter, size = 40, ring }) {
   );
 }
 
+/* ═════════════ 子地图：一个地点里面的房间平面图 ═════════════ */
+
+// 用字符串比，不用带中文的正则字面量：打包后的脚本万一被当成非 UTF-8 读，正则里的中文会坏掉
+const hasWord = (n, words) => words.split("|").some((w) => n.includes(w));
+
+/** 按名字猜房间类型：决定地板花纹、默认图标和在平面图里占多大 */
+function roomType(r) {
+  const n = String(r?.name || "").toLowerCase();
+  if (hasWord(n, "厨|餐|kitchen|dining|茶水")) return "tile";
+  if (hasWord(n, "浴|洗|卫|厕|bath|shower|toilet|更衣|泳")) return "bath";
+  if (hasWord(n, "阳台|花园|庭|露台|balcony|garden|terrace|patio")) return "green";
+  if (hasWord(n, "客厅|起居|大厅|会议|休息|living|lounge|lobby|meeting")) return "carpet";
+  return "wood";
+}
+export function roomIcon(r) {
+  const n = String(r?.name || "").toLowerCase();
+  if (hasWord(n, "卧|bed|客房")) return "🛏️";
+  if (hasWord(n, "厨|kitchen")) return "🍳";
+  if (hasWord(n, "餐|dining|食堂")) return "🍽️";
+  if (hasWord(n, "浴|洗|卫|厕|bath|shower|toilet")) return "🛁";
+  if (hasWord(n, "书|study|library|自习")) return "📚";
+  if (hasWord(n, "阳台|花园|balcony|garden")) return "🪴";
+  if (hasWord(n, "客厅|living|lounge|休息")) return "🛋️";
+  if (hasWord(n, "会议|meeting")) return "🗣️";
+  if (hasWord(n, "工位|desk|office|办公")) return "💻";
+  return "🚪";
+}
+const WEIGHT = { carpet: 1.7, wood: 1.25, tile: 1, bath: 0.7, green: 0.6 };
+const FLOOR = { wood: "url(#fp-wood)", tile: "url(#fp-tile)", bath: "url(#fp-bath)", carpet: "url(#fp-carpet)", green: "url(#fp-green)" };
+
+/** 把房间按「面积权重」切进一个矩形：每次沿长边对半切，像真实户型那样一块块拼起来 */
+function layoutRooms(rooms, rect) {
+  const out = [];
+  const go = (list, r) => {
+    if (!list.length) return;
+    if (list.length === 1) return out.push({ room: list[0], ...r });
+    const w = list.map((x) => WEIGHT[roomType(x)] || 1), total = w.reduce((a, b) => a + b, 0);
+    let acc = 0, k = 0;
+    while (k < list.length - 1 && acc + w[k] <= total / 2) acc += w[k++];
+    if (k === 0) acc += w[k++];
+    const f = acc / total;
+    if (r.w >= r.h) {
+      go(list.slice(0, k), { x: r.x, y: r.y, w: r.w * f, h: r.h });
+      go(list.slice(k), { x: r.x + r.w * f, y: r.y, w: r.w * (1 - f), h: r.h });
+    } else {
+      go(list.slice(0, k), { x: r.x, y: r.y, w: r.w, h: r.h * f });
+      go(list.slice(k), { x: r.x, y: r.y + r.h * f, w: r.w, h: r.h * (1 - f) });
+    }
+  };
+  go(rooms, rect);
+  return out;
+}
+
+function FloorPlan({ place, himHere, roomId, meHere, himImg, meImg, name, me, tint, onBack, onRoom, onEdit }) {
+  const W = 1000, H = 700;
+  const cells = useMemo(() => layoutRooms(place.rooms || [], { x: 0, y: 0, w: W, h: H }), [place.rooms]);
+  const himCell = himHere ? cells.find((c) => c.room.id === roomId) : null;
+  return (
+    <div className={`mp-floor ${tint}`}>
+      <div className="mp-crumb">
+        <button type="button" onClick={onBack}>
+          <Icon n="chevL" size={16} /> 小镇
+        </button>
+        <span>/</span>
+        <b>
+          {kindOf(place.kind)[0]} {place.name}
+        </b>
+        <button type="button" className="mp-crumb-edit" onClick={onEdit}>
+          编辑房间
+        </button>
+      </div>
+      {!cells.length ? (
+        <div className="la-empty">
+          <p>这里还没有房间。</p>
+          <button type="button" className="la-btn" onClick={onEdit}>
+            加几个房间
+          </button>
+        </div>
+      ) : (
+        <svg viewBox={`-40 -40 ${W + 80} ${H + 80}`} preserveAspectRatio="xMidYMid meet" className="mp-fsvg">
+          <defs>
+            <pattern id="fp-wood" width="60" height="18" patternUnits="userSpaceOnUse">
+              <rect width="60" height="18" fill="#ead2ad" />
+              <path d="M0 17.5h60M22 0v18" stroke="#d9bd93" strokeWidth="1.2" />
+            </pattern>
+            <pattern id="fp-tile" width="34" height="34" patternUnits="userSpaceOnUse">
+              <rect width="34" height="34" fill="#eee8dc" />
+              <path d="M0 .5h34M.5 0v34" stroke="#d8cfbf" strokeWidth="1.2" />
+            </pattern>
+            <pattern id="fp-bath" width="22" height="22" patternUnits="userSpaceOnUse">
+              <rect width="22" height="22" fill="#dce9ee" />
+              <path d="M0 .5h22M.5 0v22" stroke="#bfd3db" strokeWidth="1" />
+            </pattern>
+            <pattern id="fp-carpet" width="16" height="16" patternUnits="userSpaceOnUse">
+              <rect width="16" height="16" fill="#eadbd2" />
+              <circle cx="4" cy="4" r="1" fill="#dcc6b9" />
+              <circle cx="12" cy="12" r="1" fill="#dcc6b9" />
+            </pattern>
+            <pattern id="fp-green" width="14" height="14" patternUnits="userSpaceOnUse">
+              <rect width="14" height="14" fill="#d9e8c6" />
+              <path d="M3 10l1.3-3M9 6l1-2.4" stroke="#b5cf9c" strokeWidth="1" />
+            </pattern>
+            <clipPath id="fp-clip" clipPathUnits="objectBoundingBox">
+              <circle cx=".5" cy=".5" r=".5" />
+            </clipPath>
+            <filter id="fp-sh" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#2a1d10" floodOpacity=".35" />
+            </filter>
+          </defs>
+          <rect x="-24" y="-24" width={W + 48} height={H + 48} rx="10" fill="#3b322b" opacity=".35" />
+          {cells.map((c) => (
+            <g key={c.room.id || c.room.name} className={`fp-room${himCell === c ? " here" : ""}`} onClick={() => onRoom(c.room)}>
+              <rect x={c.x} y={c.y} width={c.w} height={c.h} fill={FLOOR[roomType(c.room)]} />
+              {himCell === c && <rect x={c.x} y={c.y} width={c.w} height={c.h} fill="#f0a86d" opacity=".16" />}
+              <rect x={c.x} y={c.y} width={c.w} height={c.h} fill="none" stroke="#5c4c40" strokeWidth="9" />
+              <Door c={c} W={W} H={H} />
+              <text x={c.x + c.w / 2} y={c.y + c.h / 2 - 6} textAnchor="middle" fontSize={Math.min(64, Math.max(30, Math.min(c.w, c.h) * 0.28))} className="fp-ico">
+                {c.room.icon || roomIcon(c.room)}
+              </text>
+              <text x={c.x + c.w / 2} y={c.y + c.h / 2 + Math.min(44, Math.max(26, Math.min(c.w, c.h) * 0.2)) + 6} textAnchor="middle" className="fp-name">
+                {c.room.name}
+              </text>
+            </g>
+          ))}
+          <rect x="0" y="0" width={W} height={H} fill="none" stroke="#4a3d33" strokeWidth="18" pointerEvents="none" />
+          {himCell && (
+            <g transform={`translate(${himCell.x + himCell.w - Math.min(84, himCell.w * 0.3)} ${himCell.y + himCell.h - Math.min(84, himCell.h * 0.32)})`} pointerEvents="none">
+              <circle r="60" className="mp-pulse" />
+              <g filter="url(#fp-sh)">
+                <circle r="58" fill="#fffdf8" />
+                <circle r="54" fill="#f0a86d" />
+                {himImg ? <image href={himImg} x="-50" y="-50" width="100" height="100" clipPath="url(#fp-clip)" preserveAspectRatio="xMidYMid slice" /> : <circle r="50" fill="#3a302d" />}
+                {!himImg && (
+                  <text y="17" textAnchor="middle" fontSize="48" fill="#fff" fontFamily="Georgia,serif">
+                    {[...String(name || "?")][0].toUpperCase()}
+                  </text>
+                )}
+              </g>
+            </g>
+          )}
+          {meHere && (
+            <g transform={`translate(${60} ${H - 60})`} pointerEvents="none">
+              <g filter="url(#fp-sh)">
+                <circle r="46" fill="#fffdf8" />
+                <circle r="43" fill="#7fb3e3" />
+                {meImg ? <image href={meImg} x="-40" y="-40" width="80" height="80" clipPath="url(#fp-clip)" preserveAspectRatio="xMidYMid slice" /> : <circle r="40" fill="#2c3a48" />}
+                {!meImg && (
+                  <text y="14" textAnchor="middle" fontSize="38" fill="#fff" fontFamily="Georgia,serif">
+                    {[...String(me || "?")][0].toUpperCase()}
+                  </text>
+                )}
+              </g>
+            </g>
+          )}
+        </svg>
+      )}
+      <p className="mp-fhint">
+        {himHere ? (himCell ? `${name} 在${himCell.room.name}` : `${name} 在这里，没说在哪个房间`) : `${name} 现在不在这里`} · 点房间可以手动把他放进去
+      </p>
+    </div>
+  );
+}
+
+/** 每个房间开一扇门：开在不贴外墙的那条边上，画成墙上的缺口 + 一道门弧 */
+function Door({ c, W, H }) {
+  const L = Math.min(56, Math.min(c.w, c.h) * 0.4);
+  let x1, y1, x2, y2, arc;
+  if (c.y + c.h < H - 1) {
+    const cx = c.x + c.w * 0.3;
+    [x1, y1, x2, y2] = [cx, c.y + c.h, cx + L, c.y + c.h];
+    arc = `M${cx},${c.y + c.h} L${cx},${c.y + c.h - L} A${L},${L} 0 0,1 ${cx + L},${c.y + c.h}`;
+  } else if (c.x > 1) {
+    const cy = c.y + c.h * 0.3;
+    [x1, y1, x2, y2] = [c.x, cy, c.x, cy + L];
+    arc = `M${c.x},${cy} L${c.x + L},${cy} A${L},${L} 0 0,1 ${c.x},${cy + L}`;
+  } else if (c.y > 1) {
+    const cx = c.x + c.w * 0.3;
+    [x1, y1, x2, y2] = [cx, c.y, cx + L, c.y];
+    arc = `M${cx},${c.y} L${cx},${c.y + L} A${L},${L} 0 0,0 ${cx + L},${c.y}`;
+  } else {
+    // 一个房间就是整个地点：门开在外墙下沿（大门）
+    const cx = c.x + c.w * 0.45;
+    [x1, y1, x2, y2] = [cx, c.y + c.h, cx + L, c.y + c.h];
+    arc = "";
+  }
+  return (
+    <g pointerEvents="none">
+      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#f6efe3" strokeWidth="12" />
+      {arc && <path d={arc} fill="none" stroke="#8a7766" strokeWidth="1.6" strokeDasharray="4 4" />}
+    </g>
+  );
+}
+
 /* ═════════════ Session ═════════════ */
 
 function SessionList({ visits, day, today, byId, tz, currentId, name, onFocus, onEdit }) {
@@ -853,14 +1079,16 @@ function SessionList({ visits, day, today, byId, tz, currentId, name, onFocus, o
                 </span>
                 <b>
                   {kindOf(v.kind || p?.kind)[0]} {p?.name || v.placeName}
+                  {v.roomName && (v.log || []).filter((l) => l.room).length <= 1 && <em className="mp-room">{v.roomName}</em>}
                   {live && <i className="mp-livebadge">{name} 在这</i>}
                 </b>
                 {v.activity && <span className="mp-tact">{v.activity}</span>}
-                {(v.log || []).length > 1 && (
+                {((v.log || []).length > 1 || (v.log || []).filter((l) => l.room).length > 1) && (
                   <span className="mp-tlog">
                     {v.log.map((l, j) => (
                       <span key={j}>
-                        {l.time} {l.activity}
+                        {l.time} {l.room ? <i className="mp-lroom">{l.room}</i> : null}
+                        {l.activity}
                       </span>
                     ))}
                   </span>
@@ -894,14 +1122,33 @@ function KindPicker({ value, onChange }) {
   );
 }
 
-function PlaceSheet({ place, name, isHere, onClose, onSave, onDelete, onMovePin, onSendHim }) {
+const ROOM_PRESETS = {
+  home: [["卧室", "🛏️"], ["客厅", "🛋️"], ["厨房", "🍳"], ["浴室", "🛁"], ["书房", "📚"], ["阳台", "🪴"]],
+  work: [["工位", "💻"], ["会议室", "🗣️"], ["茶水间", "☕"], ["办公室", "🚪"], ["休息区", "🛋️"]],
+  study: [["教室", "🧑‍🏫"], ["图书馆", "📚"], ["自习室", "✏️"], ["食堂", "🍱"]],
+  friend: [["客厅", "🛋️"], ["厨房", "🍳"], ["客房", "🛏️"]],
+  gym: [["器械区", "🏋️"], ["更衣室", "🚿"], ["泳池", "🏊"]],
+};
+
+function PlaceSheet({ place, name, isHere, onClose, onSave, onDelete, onMovePin, onSendHim, onEnter }) {
   const [f, setF] = useState({ name: place?.name || "", kind: place?.kind || "other", note: place?.note || "" });
+  const [rooms, setRooms] = useState(() => (place?.rooms || []).map((r) => ({ ...r })));
+  const [newRoom, setNewRoom] = useState("");
+  const [newIcon, setNewIcon] = useState("");
+  const has = (n) => rooms.some((r) => r.name.trim().toLowerCase() === n.trim().toLowerCase());
+  const addRoom = (n, icon = "") => {
+    n = n.trim();
+    if (!n || has(n) || rooms.length >= 12) return;
+    setRooms([...rooms, { name: n, icon }]);
+  };
+  const presets = ROOM_PRESETS[f.kind] || ROOM_PRESETS.home;
+  const changedRooms = JSON.stringify(rooms.map((r) => [r.name, r.icon || ""])) !== JSON.stringify((place?.rooms || []).map((r) => [r.name, r.icon || ""]));
   return (
     <Sheet
       title={place ? place.name : "添加地点"}
       onClose={onClose}
       footer={
-        <button type="button" className="la-btn solid" disabled={!f.name.trim()} onClick={() => onSave({ name: f.name.trim(), kind: f.kind, note: f.note.trim() })}>
+        <button type="button" className="la-btn solid" disabled={!f.name.trim()} onClick={() => onSave({ name: f.name.trim(), kind: f.kind, note: f.note.trim(), rooms })}>
           {place ? "保存" : "添加"}
         </button>
       }
@@ -922,8 +1169,45 @@ function PlaceSheet({ place, name, isHere, onClose, onSave, onDelete, onMovePin,
       <Field label="备注" hint={`写给模型看的，比如「工作日 9 点到 6 点在这」「周末早上常来」。${name} 也能看到。`}>
         <textarea value={f.note} maxLength={300} onChange={(e) => setF({ ...f, note: e.target.value })} style={{ minHeight: 70 }} />
       </Field>
+      <div className="la-field">
+        <span>房间（子地图）</span>
+        {rooms.length > 0 && (
+          <div className="mp-rooms">
+            {rooms.map((r, i) => (
+              <span key={r.id || r.name} className="mp-roomchip">
+                {r.icon || roomIcon(r)} {r.name}
+                <button type="button" onClick={() => setRooms(rooms.filter((_, j) => j !== i))} aria-label={`删掉${r.name}`}>
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="mp-presets">
+          {presets
+            .filter(([n]) => !has(n))
+            .map(([n, icon]) => (
+              <button key={n} type="button" className="la-chip" onClick={() => addRoom(n, icon)}>
+                + {icon} {n}
+              </button>
+            ))}
+        </div>
+        <div className="mp-newroom">
+          <input className="ico" value={newIcon} maxLength={4} onChange={(e) => setNewIcon(e.target.value)} placeholder="🙂" aria-label="图标" />
+          <input className="nm" value={newRoom} maxLength={30} onChange={(e) => setNewRoom(e.target.value)} placeholder="别的房间名字" onKeyDown={(e) => e.key === "Enter" && (addRoom(newRoom, newIcon), setNewRoom(""), setNewIcon(""))} />
+          <button type="button" className="la-btn" disabled={!newRoom.trim()} onClick={() => (addRoom(newRoom, newIcon), setNewRoom(""), setNewIcon(""))}>
+            加
+          </button>
+        </div>
+        <small>加了房间，点进这个地点能看到平面图；判断他在哪的时候也会精确到房间。{name} 自己也能加。</small>
+      </div>
       {place && (
         <div className="mp-sheetacts">
+          {(place.rooms || []).length > 0 && (
+            <button type="button" className="la-btn" disabled={changedRooms} title={changedRooms ? "先保存房间" : ""} onClick={onEnter}>
+              进去看看
+            </button>
+          )}
           <button type="button" className="la-btn" onClick={onMovePin}>
             <Icon n="pin" size={16} /> 在地图上挪位置
           </button>
@@ -942,26 +1226,39 @@ function PlaceSheet({ place, name, isHere, onClose, onSave, onDelete, onMovePin,
   );
 }
 
-function MoveSheet({ places, name, initial, activity, busy, onClose, onMove }) {
+function MoveSheet({ places, name, initial, initialRoom, activity, busy, onClose, onMove }) {
   const [pid, setPid] = useState(initial || places[0]?.id || "");
+  const [room, setRoom] = useState(initialRoom || "");
   const [act, setAct] = useState(activity || "");
+  const rooms = places.find((p) => p.id === pid)?.rooms || [];
   return (
     <Sheet
       title={`${name} 现在在哪`}
       onClose={onClose}
       footer={
-        <button type="button" className="la-btn solid" disabled={!pid || busy} onClick={() => onMove(pid, act.trim())}>
+        <button type="button" className="la-btn solid" disabled={!pid || busy} onClick={() => onMove(pid, act.trim(), rooms.some((r) => r.id === room) ? room : "")}>
           {busy ? "设置中…" : "就这样"}
         </button>
       }
     >
       <div className="mp-pickl">
         {places.map((p) => (
-          <button key={p.id} type="button" className={pid === p.id ? "on" : ""} onClick={() => setPid(p.id)}>
+          <button key={p.id} type="button" className={pid === p.id ? "on" : ""} onClick={() => (setPid(p.id), setRoom(""))}>
             <span>{kindOf(p.kind)[0]}</span> {p.name}
           </button>
         ))}
       </div>
+      {rooms.length > 0 && (
+        <Field label="哪个房间（可以不选）">
+          <div className="mp-pickl" style={{ marginBottom: 0 }}>
+            {rooms.map((r) => (
+              <button key={r.id} type="button" className={room === r.id ? "on" : ""} onClick={() => setRoom(room === r.id ? "" : r.id)}>
+                <span>{r.icon || roomIcon(r)}</span> {r.name}
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
       <Field label="在做什么（可以不填）">
         <input value={act} maxLength={120} onChange={(e) => setAct(e.target.value)} placeholder="比如：开会 / 看书 / 发呆" />
       </Field>
@@ -1212,6 +1509,22 @@ export function MapModelForm({ initial, profiles, mainProfileId, providers: give
 
       <Toggle checked={s.allowNewPlaces} onChange={(v) => set("allowNewPlaces", v)} label={`允许${name}自己加新地点`} hint="模型判断时、或者他在聊天里用 MCP 去一个没登记过的地方时，自动加进地点表。" />
       <Toggle checked={s.syncToUranus} onChange={(v) => set("syncToUranus", v)} label="位置变了告诉 Uranus" hint="作为背景信息同步（一句话，不花 token、不会逼他回消息），这样他在聊天里说的和地图对得上。他自己挪的不重复同步。" />
+      <div className="la-field">
+        <span>日程之外，{name} 有多随性</span>
+        <div className="la-seg">
+          {[
+            ["low", "按部就班"],
+            ["normal", "自然"],
+            ["high", "随性"],
+          ].map(([k, label]) => (
+            <button key={k} type="button" className={(s.spontaneity || "normal") === k ? "on" : ""} onClick={() => set("spontaneity", k)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <small>按部就班：基本只照日程。自然：日程是参考，中间会顺路办事、在家里换房间，合适的时候来找你。随性：经常临时起意，想你了就过来。</small>
+      </div>
+      <Toggle checked={s.reactToUser !== false} onChange={(v) => set("reactToUser", v)} label={`你换位置时让${name}看到`} hint="你在地图上把自己挪到别的地方后，5–25 分钟内会额外判断一次：他看到了，自己决定要不要过来找你。会多调一次模型。" />
       <Toggle checked={s.usePersona} onChange={(v) => set("usePersona", v)} label="判断时带上人设" hint="用 Companion 设置里的角色人设（截前 1200 字）。关掉更省 token，但判断会更「泛」。" />
       <Field label="「在做什么」用什么语言（留空 = 跟地点名一样）">
         <input value={s.language || ""} placeholder="中文 / English" onChange={(e) => set("language", e.target.value)} />
@@ -1226,6 +1539,33 @@ export function MapModelForm({ initial, profiles, mainProfileId, providers: give
 const CSS = `
 .la-map{--ac:#f0b47e;--ac-ink:#2b1d12;background:#14141a}
 .mp-wrap{position:relative;flex:1;min-height:0}
+.mp-map.hidden{visibility:hidden}
+.mp-floor{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;background:radial-gradient(100% 80% at 50% 30%,#3a332f 0,#1b1a1f 75%)}
+.mp-floor.night .mp-fsvg{filter:brightness(.82) saturate(.9)}
+.mp-crumb{flex:none;display:flex;align-items:center;gap:8px;padding:10px 12px 4px;font-size:14px;color:var(--dim)}
+.mp-crumb button{display:inline-flex;align-items:center;gap:2px;padding:6px 10px 6px 6px!important;border-radius:999px!important;background:#ffffff12!important;color:var(--ink)}
+.mp-crumb b{color:var(--ink);font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mp-crumb .mp-crumb-edit{padding:6px 12px!important;font-size:12.5px}
+.mp-fsvg{flex:1;min-height:0;width:100%;padding:4px 10px 0}
+.fp-room{cursor:pointer}
+.fp-room:hover rect:first-child{filter:brightness(1.04)}
+.fp-ico{opacity:.9}
+.fp-name{font:600 26px -apple-system,"PingFang SC",sans-serif;fill:#4a3b30;paint-order:stroke;stroke:#fbf6ee;stroke-width:6px;stroke-linejoin:round}
+.fp-room.here .fp-name{fill:#a3532a}
+.mp-fhint{flex:none;margin:0;padding:4px 14px 26px;text-align:center;font-size:12px;color:var(--faint)}
+.mp-room{font-style:normal;font-size:12px;font-weight:600;margin-left:6px;padding:1px 8px;border-radius:99px;background:#ffffff14;color:#f3d8bf}
+.mp-peek{margin-left:8px;font-size:12.5px!important;color:var(--ac)!important;font-weight:500}
+.mp-react{color:#9cc3e6!important}
+.mp-lroom{font-style:normal;margin:0 5px 0 2px;padding:0 6px;border-radius:99px;background:#ffffff12;color:#e9dccf}
+.mp-rooms{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.mp-roomchip{display:inline-flex;align-items:center;gap:4px;padding:5px 6px 5px 11px;border-radius:999px;background:#ffffff12;border:1px solid var(--l);font-size:13.5px}
+.mp-roomchip button{width:22px;height:22px;border-radius:50%!important;background:#ffffff14!important;color:var(--dim);font-size:14px;line-height:1}
+.mp-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.mp-presets .la-chip{font-size:12.5px}
+.mp-newroom{display:flex;gap:6px}
+.la-field .mp-newroom input.ico{width:58px!important;flex:none;text-align:center;padding:9px 4px!important}
+.la-field .mp-newroom input.nm{width:auto!important;flex:1;min-width:0}
+.mp-newroom .la-btn{flex:none}
 .mp-map{position:absolute;inset:0;overflow:hidden;background:#ede4d3;touch-action:none}
 .mp-map svg:first-child{width:100%;height:100%;display:block;touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none}
 .mp-map.placing svg:first-child{cursor:crosshair}
@@ -1243,6 +1583,7 @@ const CSS = `
 .mp-scale i{display:block;height:5px;border:1.5px solid #6d604c;border-top:0}
 .mp-compass{position:absolute;right:12px;bottom:28px;width:36px;height:36px;pointer-events:none}
 .mp-banner{position:absolute;left:12px;right:12px;top:10px;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 8px 8px 14px;border-radius:16px;background:#1d1b20e6;color:#fff;font-size:13px;box-shadow:0 8px 24px #0005}
+.mp-fab[hidden]{display:none}
 .mp-fab{position:absolute;right:12px;top:10px;z-index:2;display:flex;flex-direction:column;gap:8px}
 .mp-fab button{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:#fffdf7f0!important;color:#4c4134;box-shadow:0 6px 18px #0003}
 .mp-panel{flex:none;position:relative;z-index:4;height:46%;display:flex;flex-direction:column;margin-top:-18px;border-radius:22px 22px 0 0;background:linear-gradient(180deg,#22212a,#18181f);border-top:1px solid #ffffff1c;box-shadow:0 -14px 40px #0006;transition:height .28s cubic-bezier(.2,.8,.2,1)}

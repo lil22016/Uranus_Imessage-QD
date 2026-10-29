@@ -270,7 +270,7 @@ function DaySheet({ d, today, rec, records, sum, mark, onClose, save, startOn, t
   const daily = rec?.daily?.[d] || {};
   const [flow, setFlow] = useState(daily.flow ?? (rec ? (d === rec.startDate ? rec.flow : 2) : 2));
   const [pain, setPain] = useState(daily.pain ?? (d === rec?.startDate ? rec.pain : 0));
-  const [sym, setSym] = useState(() => String(daily.symptoms || "").split(/[、,，\s]+/).filter(Boolean));
+  const [sym, setSym] = useState(() => String(daily.symptoms || "").split(new RegExp("[、,，\\s]+")).filter(Boolean));
   const [note, setNote] = useState(daily.note || "");
   const [busy, setBusy] = useState(false);
   const extra = sym.filter((s) => !SYMPTOMS.includes(s));
@@ -336,7 +336,7 @@ function DaySheet({ d, today, rec, records, sum, mark, onClose, save, startOn, t
 
   async function saveDay() {
     setBusy(true);
-    const symptoms = [...sym.filter((s) => SYMPTOMS.includes(s)), ...custom.split(/[、,，]+/).map((s) => s.trim()).filter(Boolean)].join("、");
+    const symptoms = [...sym.filter((s) => SYMPTOMS.includes(s)), ...custom.split(new RegExp("[、,，]+")).map((s) => s.trim()).filter(Boolean)].join("、");
     const next = records.map((x) => {
       if (x.id !== rec.id) return x;
       const o = { ...x, daily: { ...(x.daily || {}), [d]: { flow, pain, symptoms, note } } };

@@ -523,7 +523,7 @@ function FocusHistory({ log, today, onClose, onDelete }) {
           <div key={d} className={d === today ? "today" : ""}>
             <span className="v">{per[i] || ""}</span>
             <i style={{ height: `${Math.max(per[i] ? 6 : 2, (per[i] / max) * 100)}%` }} />
-            <span className="d">{d === today ? "今天" : md(d).replace(/^\d+月/, "")}</span>
+            <span className="d">{d === today ? "今天" : md(d).replace(new RegExp("^\\d+月"), "")}</span>
           </div>
         ))}
       </div>
