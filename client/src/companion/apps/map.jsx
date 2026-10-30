@@ -1117,28 +1117,68 @@ function Door({ c, W, H }) {
 
 /* ═════════════ Session ═════════════ */
 
+/** 某个时刻在角色时区里是哪一天 / 几点 */
+function tzParts(ms, tz) {
+  const o = {};
+  try {
+    for (const x of new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(ms))) o[x.type] = x.value;
+  } catch {
+    const d = new Date(ms);
+    Object.assign(o, { year: d.getFullYear(), month: String(d.getMonth() + 1).padStart(2, "0"), day: String(d.getDate()).padStart(2, "0"), hour: String(d.getHours()).padStart(2, "0"), minute: String(d.getMinutes()).padStart(2, "0") });
+  }
+  return { date: `${o.year}-${o.month}-${o.day}`, time: `${o.hour}:${o.minute}` };
+}
+/** 角色时区里某天 00:00 对应的时间戳 */
+function tzMidnight(day, tz) {
+  let guess = Date.parse(`${day}T00:00:00Z`);
+  for (let i = 0; i < 2; i++) {
+    const p = tzParts(guess, tz);
+    const wall = Date.parse(`${p.date}T${p.time}:00Z`);
+    guess -= wall - Date.parse(`${day}T00:00:00Z`);
+  }
+  return guess;
+}
+
+/**
+ * 把一段停留切成「这一天里的那部分」：跨天的停留（比如昨晚到今早一直在家），
+ * 每天只显示当天的记录、当天的起止时间和当天的时长。
+ */
+function sliceVisit(v, day, tz, nowMs) {
+  const d0 = tzMidnight(day, tz), d1 = tzMidnight(plusDays(day, 1), tz);
+  const startMs = Date.parse(v.start), endMs = v.end ? Date.parse(v.end) : nowMs;
+  const logs = (v.log || []).map((l) => ({ ...l, ms: l.at ? Date.parse(l.at) : startMs }));
+  const todays = logs.filter((l) => l.ms >= d0 && l.ms < d1);
+  const before = logs.filter((l) => l.ms < d0);
+  // 从哪开始算：当天开始的就从到达时间；前一天就在的，从当天第一条记录开始（没有记录就从 0 点）
+  const from = startMs >= d0 ? startMs : todays.length ? todays[0].ms : d0;
+  const to = Math.min(endMs, d1);
+  const last = todays[todays.length - 1] || before[before.length - 1];
+  return {
+    fromLabel: tzParts(from, tz).time,
+    toLabel: !v.end && endMs < d1 ? "现在" : endMs >= d1 ? "24:00" : tzParts(endMs, tz).time,
+    mins: Math.max(0, Math.round((to - from) / 60000)),
+    logs: todays,
+    activity: (last?.activity || v.activity || "").trim(),
+    room: last?.room || (todays.length || before.length ? "" : v.roomName) || "",
+  };
+}
+
 function SessionList({ visits, day, today, byId, tz, currentId, name, onFocus, onEdit }) {
-  if (!visits.length) return <p className="la-empty">这天没有记录。</p>;
   const nowMs = Date.now();
-  // 只算落在这一天里的那部分（跨天的那段别把前一晚也算进来）
-  const d0 = Date.parse(`${day}T00:00:00`), d1 = d0 + 86400000;
-  const longest = visits.reduce((a, v) => {
-    const d = Math.min(v.end ? Date.parse(v.end) : nowMs, d1) - Math.max(Date.parse(v.start), d0);
-    return d > a.d ? { d, v } : a;
-  }, { d: 0, v: null });
-  const uniq = new Set(visits.map((v) => v.placeId)).size;
+  const rows = visits.map((v) => ({ v, s: sliceVisit(v, day, tz, nowMs) })).filter(({ s }) => s.mins > 0 || s.logs.length);
+  if (!rows.length) return <p className="la-empty">这天没有记录。</p>;
+  const longest = rows.reduce((a, r) => (r.s.mins > a.mins ? { mins: r.s.mins, v: r.v } : a), { mins: 0, v: null });
+  const uniq = new Set(rows.map((r) => r.v.placeId)).size;
   return (
     <>
       <p className="mp-sum">
         {day === today ? "今天" : md(day)} 去了 <b>{uniq}</b> 个地方{longest.v ? <> · 在 {longest.v.placeName} 待得最久</> : null}
       </p>
       <ol className="mp-tl">
-        {visits.map((v, i) => {
+        {rows.map(({ v, s }, i) => {
           const p = byId[v.placeId];
-          const from = v.date < day ? "前一天" : v.startTime;
-          const to = !v.end ? "现在" : (v.endDate || v.date) > day ? "次日" : v.endTime;
-          const mins = Math.round(((v.end ? Date.parse(v.end) : nowMs) - Date.parse(v.start)) / 60000);
-          const live = v.id === currentId;
+          const live = v.id === currentId && day === today;
+          const roomsShown = s.logs.filter((l) => l.room).length;
           return (
             <li key={v.id} className={live ? "live" : ""}>
               <span className="mp-tdot" style={{ background: kindOf(v.kind || p?.kind)[1] }}>
@@ -1146,17 +1186,17 @@ function SessionList({ visits, day, today, byId, tz, currentId, name, onFocus, o
               </span>
               <button type="button" className="mp-tbody" onClick={() => onFocus(p)}>
                 <span className="mp-ttime">
-                  {from} – {to} <em>{mins >= 60 ? `${Math.floor(mins / 60)} 小时${mins % 60 ? ` ${mins % 60} 分` : ""}` : `${Math.max(mins, 1)} 分钟`}</em>
+                  {s.fromLabel} – {s.toLabel} <em>{s.mins >= 60 ? `${Math.floor(s.mins / 60)} 小时${s.mins % 60 ? ` ${s.mins % 60} 分` : ""}` : `${Math.max(s.mins, 1)} 分钟`}</em>
                 </span>
                 <b>
                   {kindOf(v.kind || p?.kind)[0]} {p?.name || v.placeName}
-                  {v.roomName && (v.log || []).filter((l) => l.room).length <= 1 && <em className="mp-room">{v.roomName}</em>}
+                  {s.room && roomsShown <= 1 && <em className="mp-room">{s.room}</em>}
                   {live && <i className="mp-livebadge">{name} 在这</i>}
                 </b>
-                {v.activity && <span className="mp-tact">{v.activity}</span>}
-                {((v.log || []).length > 1 || (v.log || []).filter((l) => l.room).length > 1) && (
+                {s.activity && <span className="mp-tact">{s.activity}</span>}
+                {(s.logs.length > 1 || roomsShown > 1) && (
                   <span className="mp-tlog">
-                    {v.log.map((l, j) => (
+                    {s.logs.map((l, j) => (
                       <span key={j}>
                         {l.time} {l.room ? <i className="mp-lroom">{l.room}</i> : null}
                         {l.activity}
