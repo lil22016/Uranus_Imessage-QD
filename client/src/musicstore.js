@@ -124,6 +124,7 @@ let st = {
   toast: "",
   liked: [], // 我在网易云「喜欢的音乐」里的歌曲 id
   hist: loadHist(), // 播放历史（最新的在前），只存在这台设备上
+  asking: false, // 「问问他」正在等回复
 };
 const subs = new Set();
 const emit = () => subs.forEach((f) => f());
@@ -172,6 +173,8 @@ if (audio) {
   audio.addEventListener("timeupdate", () => {
     set({ pos: audio.currentTime });
     updatePosition();
+    // 随机插话按「这首歌播到第几秒」触发：熄屏 / 后台时 setTimeout 会被 iOS 冻住，timeupdate 不会
+    checkRoll();
     if (!isFinite(audio.duration) || !audio.duration) return;
     const left = audio.duration - audio.currentTime;
     // 快放完时提前拿好下一首的地址（见 prefetchNext）
@@ -287,7 +290,7 @@ function advancePrefetched() {
   if (!s) return false;
   if (st.idx >= 0) history.push(st.idx);
   history = history.slice(-50);
-  clearTimeout(rollTimer);
+  pendingRoll = null;
   preFailAt = 0;
   switching = !audio.paused;
   audio.src = p.url;
@@ -325,7 +328,7 @@ if (typeof document !== "undefined") {
 export async function play(list, i) {
   const s = list[i];
   if (!s || !audio) return;
-  clearTimeout(rollTimer);
+  pendingRoll = null;
   pre = null;
   preFailAt = 0;
   set({ queue: list, idx: i, lrc: [], pos: 0, dur: s.dur || 0 });
@@ -554,10 +557,17 @@ export async function sendChat(text) {
   }
 }
 
-/* ---- 随机插话：每首歌一次，掷骰子决定说话 / 表态 / 想切歌；内容由模型写 ---- */
+/* ---- 随机插话：每首歌一次，掷骰子决定说话 / 表态 / 想切歌；内容由模型写 ----
+ *
+ * 触发点记成「播放进度第 N 秒」，在 timeupdate 里检查（不用 setTimeout）：
+ * iPhone 熄屏 / 切到后台时网页的定时器会被冻住，到点也不跑；但音乐在放，timeupdate 照样大约每秒来一次。
+ * 暂停的时候进度不走，所以也不会在暂停时插话。
+ */
 let rolled = "";
 let refreshing = false;
-let rollTimer;
+let pendingRoll = null; // { id, at（秒）, prior }
+let reacting = false;
+const priorOf = (s) => st.att.find((a) => a.song?.id === s.id && a.by === "character")?.attitude || "";
 function scheduleRoll() {
   const s = cur();
   if (!s || rolled === s.id) return;
@@ -573,34 +583,74 @@ function scheduleRoll() {
   }
   rolled = s.id;
   // 他以前表过态的歌：踩过 → 很可能想跳过（70%，而且更早开口）；喜欢过 → 不会想跳
-  const prior = st.att.find((a) => a.song?.id === s.id && a.by === "character")?.attitude || "";
+  const prior = priorOf(s);
   const maxAt = Math.max(12, Math.min(70, (st.dur || 120) * 0.6));
-  const delay = (prior === "dislike" ? 3 + Math.random() * 5 : 8 + Math.random() * (maxAt - 8)) * 1000;
-  clearTimeout(rollTimer);
-  rollTimer = setTimeout(async () => {
-    const c = st.mcfg;
-    if (!c || cur()?.id !== s.id || audio.paused) return;
-    const wantText = Math.random() < c.commentChance;
-    const wantAtt = Math.random() < c.attitudeChance;
-    const wantSkip = prior === "dislike" ? Math.random() < 0.7 : prior === "like" ? false : Math.random() < c.skipChance;
-    if (!wantText && !wantAtt && !wantSkip) return;
-    try {
-      const d = await cx("/music/react", {
-        method: "POST",
-        body: { song: brief(s), lyricLine: lineNow(), lyrics: lyricCtx(), position: audio.currentTime, allowSkip: wantSkip, priorAttitude: prior, wantText: wantText || wantSkip, wantAttitude: wantAtt },
-      });
-      set({ att: d.attitudes || st.att });
-      if (d.text) {
-        set({ chat: [...st.chat, { id: "r" + Date.now(), role: "character", text: d.text, kind: "react", song: brief(s) }] });
-        showBubble(d.text);
-      }
-      // 他点了爱心：如果在设置里选了歌单，就把这首加进去（网易云上能看到）；没选就只是在这里表达
-      if (d.attitude === "like" && prior !== "like" && local.likeListId) {
-        addToList(local.likeListId, s, true).then((ok) => ok && say(`${st.names.c} 把《${s.name}》加进了「${local.likeListName || "他的歌单"}」`));
-      }
-      if (d.skip && cur()?.id === s.id) setTimeout(() => cur()?.id === s.id && next(), 3000);
-    } catch (e) {
-      say(e.message);
+  const delay = prior === "dislike" ? 3 + Math.random() * 5 : 8 + Math.random() * (maxAt - 8);
+  pendingRoll = { id: s.id, at: (audio?.currentTime || 0) + delay, prior };
+}
+function checkRoll() {
+  // 熄屏时换歌不一定会再发一次 play 事件：在进度里补一下「这首还没掷过骰子」
+  if (!pendingRoll && audio && !audio.paused && cur() && rolled !== cur().id) scheduleRoll();
+  const r = pendingRoll;
+  if (!r || reacting) return;
+  const s = cur();
+  if (!s || s.id !== r.id) {
+    pendingRoll = null;
+    return;
+  }
+  // 歌比预想的短：别让触发点落在歌尾之后
+  const d = audio.duration;
+  if (isFinite(d) && d > 0 && r.at > d * 0.85) r.at = d * 0.6;
+  if (audio.paused || audio.currentTime < r.at) return;
+  pendingRoll = null;
+  const c = st.mcfg;
+  if (!c) return;
+  const wantText = Math.random() < c.commentChance;
+  const wantAtt = Math.random() < c.attitudeChance;
+  const wantSkip = r.prior === "dislike" ? Math.random() < 0.7 : r.prior === "like" ? false : Math.random() < c.skipChance;
+  if (!wantText && !wantAtt && !wantSkip) return;
+  react(s, { allowSkip: wantSkip, wantText: wantText || wantSkip, wantAttitude: wantAtt, prior: r.prior });
+}
+
+async function react(s, { allowSkip, wantText, wantAttitude, prior, asked = false }) {
+  reacting = true;
+  try {
+    const d = await cx("/music/react", {
+      method: "POST",
+      body: { song: brief(s), lyricLine: lineNow(), lyrics: lyricCtx(), position: audio.currentTime, allowSkip, priorAttitude: prior, wantText, wantAttitude, asked },
+    });
+    set({ att: d.attitudes || st.att });
+    if (d.text) {
+      set({ chat: [...st.chat, { id: "r" + Date.now(), role: "character", text: d.text, kind: "react", song: brief(s) }] });
+      showBubble(d.text);
     }
-  }, delay);
+    if (asked && d.attitude && d.attitude !== "none" && d.attitude !== prior) say(`${st.names.c || "Ta"} ${d.attitude === "like" ? "喜欢" : "踩了"}《${s.name}》`);
+    // 他点了爱心：如果在设置里选了歌单，就把这首加进去（网易云上能看到）；没选就只是在这里表达
+    if (d.attitude === "like" && prior !== "like" && local.likeListId) {
+      addToList(local.likeListId, s, true).then((ok) => ok && say(`${st.names.c} 把《${s.name}》加进了「${local.likeListName || "他的歌单"}」`));
+    }
+    if (d.skip && cur()?.id === s.id) setTimeout(() => cur()?.id === s.id && next(), 3000);
+    return d;
+  } catch (e) {
+    say(e.message);
+    return null;
+  } finally {
+    reacting = false;
+  }
+}
+
+/** 「问问他」：现在就让他对这首歌表个态（一定会说话，尽量给出喜欢 / 踩；不会自己切歌）。这首就不再随机插话了。 */
+export async function askAttitude() {
+  const s = cur();
+  if (!s) return null;
+  if (!st.mcfg) await refreshState();
+  if (reacting) return null;
+  rolled = s.id;
+  pendingRoll = null;
+  set({ asking: true });
+  try {
+    return await react(s, { allowSkip: false, wantText: true, wantAttitude: true, prior: priorOf(s), asked: true });
+  } finally {
+    set({ asking: false });
+  }
 }

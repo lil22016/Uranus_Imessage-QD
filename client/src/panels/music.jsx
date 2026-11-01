@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, History, Headphones, Heart, ListMusic, Menu, MessageCircle, Minus, Pause, Play, Plus, Repeat1, Send, Settings2, Share2, Shuffle, SkipBack, SkipForward, ThumbsDown, X } from "lucide-react";
+import { Check, ChevronLeft, History, Headphones, Heart, ListMusic, Menu, MessageCircle, Minus, Pause, Play, Plus, Repeat1, Send, Settings2, Share2, Shuffle, SkipBack, SkipForward, Sparkles, ThumbsDown, X } from "lucide-react";
 import { ShareLyrics } from "./musicshare.jsx";
 import { useConfig } from "../store.jsx";
 import { cx } from "../companion/api.js";
 import { useTheme } from "../phonehome.jsx";
 import {
   addToList,
+  askAttitude,
   clearChat,
   clearHist,
   createList,
@@ -62,7 +63,7 @@ export function MusicPanel({ onExit }) {
   const L = useLocal();
   const s = useMusic();
   const { api = "", cookie = "", mode = "seq" } = L;
-  const { queue, idx, playing, pos, dur, lrc, att, mcfg, profiles, chat, bubble, names, toast, liked, hist } = s;
+  const { queue, idx, playing, pos, dur, lrc, att, mcfg, profiles, chat, bubble, names, toast, liked, hist, asking } = s;
   const song = queue[idx] || null;
 
   const [tab, setTab] = useState("rec"); // rec | lists | hist | chat
@@ -232,6 +233,10 @@ export function MusicPanel({ onExit }) {
               </button>
               <div className="mu-name">{song.name}</div>
               <div className="mu-art">{song.artist}</div>
+              {/* 不用等随机插话：现在就问问他觉得这首怎么样（他会说一句，并且大多会点喜欢或踩） */}
+              <button type="button" className="mu-ask" disabled={asking} onClick={askAttitude}>
+                <Sparkles size={14} strokeWidth={1.7} /> {asking ? `${names.c || "Ta"} 在想…` : `问问 ${names.c || "Ta"} 觉得怎么样`}
+              </button>
               {!showLrc && lineText && <div className="mu-line">{lineText}</div>}
               <Slider value={dur ? pos / dur : 0} onChange={(v) => seek(v * (dur || 0))} label="播放进度" />
               <div className="mu-time">
@@ -856,6 +861,9 @@ const CSS = `
 .mu *{box-sizing:border-box}
 .mu button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .mu-top{flex:none;display:flex;align-items:center;justify-content:space-between;gap:4px;padding:calc(6px + env(safe-area-inset-top)) 12px 2px;max-width:520px;width:100%;margin:0 auto}
+.mu-ask{display:flex!important;width:max-content;max-width:100%;align-items:center;gap:6px;margin:10px auto 0!important;padding:7px 14px!important;border-radius:999px!important;border:1px solid var(--l)!important;background:#ffffff0d!important;font-size:13px;color:var(--ac)!important}
+.mu-ask:disabled{opacity:.6}
+.mu-ask:active{transform:scale(.97)}
 .mu-title{flex:1;display:flex;align-items:center;gap:6px;font-family:Georgia,serif;letter-spacing:.08em;font-size:15px}
 .mu-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 16px calc(28px + env(safe-area-inset-bottom));max-width:520px;width:100%;margin:0 auto;-webkit-overflow-scrolling:touch}
 .mu-ico{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;color:var(--dim)}
