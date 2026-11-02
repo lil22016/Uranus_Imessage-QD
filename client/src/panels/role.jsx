@@ -7329,7 +7329,10 @@ export function RoleDetail({ role, onBack, onGoto, bridge }) {
         <Fold
           title="角色提示词"
           desc="这个角色是谁 —— 名字和性格设定"
-          badge={role.description?.trim() ? `${role.description.trim().length} 字` : "空"}
+          badge={
+            (role.description?.trim() ? `${role.description.trim().length} 字` : "空") +
+            (role.chatDescription?.trim() ? ` · 聊天 ${role.chatDescription.trim().length} 字` : "")
+          }
         >
           <div className="grid grid-cols-1 gap-6">
             <Field label="角色名称" hint="会话 ID 的前缀，也是 {{char}} 的值">
@@ -7349,6 +7352,17 @@ export function RoleDetail({ role, onBack, onGoto, bridge }) {
                 value={role.description}
                 onChange={(e) => patch({ description: e.target.value })}
                 placeholder="描述角色的性格、说话风格、背景知识…"
+              />
+            </Field>
+            <Field
+              label="聊天角色提示词（可选）"
+              hint="只给 iMessage 聊天用（含主动消息）。写了就替换上面的「角色内容」，适合写「这是短信对话」、回复格式这类只属于聊天的设定；空着就用上面那段。查手机、小剧场、记忆、线下等其他功能始终用上面那段"
+            >
+              <textarea
+                className={`${inputCls} min-h-[180px] resize-y leading-relaxed`}
+                value={role.chatDescription ?? ""}
+                onChange={(e) => patch({ chatDescription: e.target.value })}
+                placeholder="留空 = 聊天也用上面的角色内容"
               />
             </Field>
             <VarHint role={role} onGoto={onGoto} />
