@@ -259,7 +259,7 @@ function useStatusBand(color) {
 /* ---------------------------------------------------------------- 主屏幕 */
 
 const DOCK = ["world", "preset", "memories", "companion"];
-const P1_MINI = ["role", "user", "gallery", "api"];
+const P1_MINI = ["role", "user", "gallery", "api", "glass"];
 
 export function PhoneHome({ nav, config, onOpen, onExit }) {
   const theme = useTheme();

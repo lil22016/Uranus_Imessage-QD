@@ -7,6 +7,7 @@
 import { PeriodApp } from "../companion/apps/period.jsx";
 import { FocusApp } from "../companion/apps/focus.jsx";
 import { MapApp } from "../companion/apps/map.jsx";
+import { GlassApp } from "../companion/apps/glass.jsx";
 import { useTheme } from "../phonehome.jsx";
 import { useConfig } from "../store.jsx";
 
@@ -22,4 +23,8 @@ export function WhereaboutsPanel({ onExit }) {
   const theme = useTheme();
   const { config } = useConfig();
   return <MapApp onExit={onExit} avatars={{ role: theme.avatarRole, user: theme.avatarUser }} providers={config?.providers ?? []} />;
+}
+
+export function GlassPanel({ onExit }) {
+  return <GlassApp onExit={onExit} />;
 }

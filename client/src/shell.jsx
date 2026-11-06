@@ -38,7 +38,7 @@ import { MusicPanel } from "./panels/music.jsx";
 import { HomeBar, HomeButton, PhoneAppStyle, PhoneHome, setTheme, useTheme } from "./phonehome.jsx";
 import { CustomCssPanel, useCustomCss } from "./customcss.jsx";
 import { CompanionPanel } from "./panels/companion.jsx";
-import { FocusPanel, PeriodPanel, WhereaboutsPanel } from "./panels/lifeapps.jsx";
+import { FocusPanel, GlassPanel, PeriodPanel, WhereaboutsPanel } from "./panels/lifeapps.jsx";
 import { SettingsAppPanel } from "./panels/settingsapp.jsx";
 import { PhonePanel } from "./panels/phone.jsx";
 import { SetupButton, SetupWizard, useAutoOpenSetup } from "./panels/setup.jsx";
@@ -297,7 +297,7 @@ export function SectionList({ section, groups, itemId, onPick, onAnchor }) {
 }
 
 /** 整屏打开的 App（不套控制台的顶栏 / 侧栏），退出时回到进来之前的分区。 */
-const FULLSCREEN_TABS = ["companion", "music", "settings", "whereabouts", "focus", "period"];
+const FULLSCREEN_TABS = ["companion", "music", "settings", "whereabouts", "focus", "period", "glass"];
 
 export function AppShell() {
   const { config, loadError } = useConfig();
@@ -868,6 +868,7 @@ export function AppShell() {
               if (tab === "whereabouts") return <WhereaboutsPanel onExit={exit} />;
               if (tab === "focus") return <FocusPanel onExit={exit} />;
               if (tab === "period") return <PeriodPanel onExit={exit} />;
+              if (tab === "glass") return <GlassPanel onExit={exit} />;
               return <MusicPanel onExit={exit} />;
             })()}
           </div>

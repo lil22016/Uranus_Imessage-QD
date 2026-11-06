@@ -1,6 +1,7 @@
 import {
   AtSign,
   BookOpen,
+  CloudFog,
   Brain,
   Droplet,
   Headphones,
@@ -309,6 +310,14 @@ export const NAV = [
     label: "经期",
     icon: Droplet,
     desc: "经期记录和预测，可以从拾心界的备份导入旧记录。",
+    anchors: [],
+  },
+  {
+    id: "glass",
+    label: "雾玻璃",
+    icon: CloudFog,
+    /* 主屏幕第一屏（第二屏满了），见 phonehome.jsx 的 P1_MINI */
+    desc: "一面两边都起了雾的玻璃，他在另一边。擦开雾、敲敲玻璃，他会写字、按手印、留唇印或者敲回来。",
     anchors: [],
   },
   {
