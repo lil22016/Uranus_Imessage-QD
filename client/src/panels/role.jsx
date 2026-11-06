@@ -670,16 +670,25 @@ function RoleSpyFields({ role, onGoto }) {
             <div>
               <p className="text-ui text-ink">手机那头</p>
               <p className="mt-0.5 text-meta leading-relaxed text-ink-faint">
-                iPhone 没法被「拉」—— App 不能后台监听端口。走的是
-                <strong className="text-ink-soft">邮件触发</strong>
-                ：服务端发一封带关键字的邮件，你 iPhone 上的邮件自动化收到后跑一个快捷指令，
-                截屏再传回来。所以这里填的不是地址，是发件邮箱和校验密钥。
+                iPhone 没法被「拉」—— App 不能后台监听端口，所以都是
+                <strong className="text-ink-soft">服务端触发 → iPhone 上的自动化跑快捷指令</strong>
+                。触发分两条路：
                 <br />
+                <strong className="text-ink-soft">① 查手机、回到聊天、锁屏</strong>
+                这三件走
+                <strong className="text-ink-soft"> iMessage 暗号</strong>
+                —— 服务端往对话里发一条带 ⟡ 的暗号，你的「信息」自动化即时接住。好处是
+                <strong className="text-ink-soft">即时、且不受低电量模式影响</strong>
+                （邮件在低电量下既不推送也不拉取，要等解锁或手动收信，常晚几十分钟）。代价是暗号会出现在你俩的对话气泡里 —— ⟡ 一般打字打不出，角色的 *动作* 星号不会误触发。
+                <br />
+                <strong className="text-ink-soft">② 其余十几件事</strong>
+                （看微信、账单、电量、位置、闹钟、放歌…）仍走
+                <strong className="text-ink-soft">邮件触发</strong>
+                ，用下面这套 SMTP 凭据。
                 <strong className="text-ink-soft">收件的必须是 iCloud 邮箱</strong>
-                （邮件自动化只对 iCloud 邮件的推送即时响应；QQ / Gmail 这类要轮询，慢 5–15 分钟）。
-                发件邮箱随意 —— iCloud、QQ、163 都行，
-                <strong className="text-ink-soft">自己发给自己最省事</strong>。
-                iCloud 的端口必须 587，QQ / 163 一般 465。
+                （邮件自动化只对 iCloud 邮件即时响应；QQ / Gmail 要轮询，慢 5–15 分钟）。发件邮箱随意，自己发给自己最省事，iCloud 端口必须 587、QQ / 163 一般 465。
+                <br />
+                「查手机」的截图<strong className="text-ink-soft">传回来</strong>那条路没变：快捷指令把图 POST 回下面的「收图路径」、靠「校验密钥」验身，所以这两项连同「等图秒数」都还要填。
                 <br />
                 这套凭据<strong className="text-ink-soft">是全局的，所有角色共用</strong>
                 （它描述的是你那部 iPhone，不是哪个角色），也不进备份文件。
@@ -729,14 +738,6 @@ function RoleSpyFields({ role, onGoto }) {
                   placeholder="someone@icloud.com"
                 />
               </Field>
-              <Field label="邮件主题关键字" hint="iPhone 自动化按「主题包含」认这个词，和快捷指令里的条件保持一致">
-                <input
-                  className={inputCls}
-                  value={smtp.subject ?? ""}
-                  onChange={(e) => updateSpyApi({ subject: e.target.value })}
-                  placeholder="PHONESPY_TRIGGER"
-                />
-              </Field>
               <Field label="校验密钥" hint="要一字不差填进 iPhone 快捷指令的 secret 字段，所以这里摆成明文">
                 <input
                   className={`${inputCls} ${blank(smtp.webhookSecret) ? "border-warn text-warn" : ""}`}
@@ -767,12 +768,26 @@ function RoleSpyFields({ role, onGoto }) {
             </Field>
 
             <div>
-              <p className="text-ui text-ink">iPhone 上要配两样（一次配好，之后全自动）</p>
+              <p className="text-ui text-ink">iPhone 上要配什么（一次配好，之后全自动）</p>
               <p className="mt-1 text-meta leading-relaxed text-ink-faint">
-                ①
-                <strong className="text-ink-soft">快捷指令 App</strong>
-                新建一个快捷指令：截屏 → 转换图像（JPEG、质量 0.5）→ 获取 URL 内容
-                （URL 填
+                <strong className="text-ink-soft">查手机 / 回到聊天 / 锁屏（走 iMessage 暗号）</strong>
+                ：在
+                <strong className="text-ink-soft">快捷指令 App → 自动化</strong>
+                里，每件事建一条
+                <strong className="text-ink-soft">「信息」自动化</strong>
+                —— 发件人选角色发消息用的那个号码、「信息包含」填下面对应的暗号（整个粘进去，别手打）、选「立即运行」并关掉「运行前询问」：
+                <br />· 回到聊天 →
+                <code className="mx-1 bg-sunken px-1">⟡come back⟡</code>
+                ，动作：打开当前聊天
+                <br />· 查手机 →
+                <code className="mx-1 bg-sunken px-1">⟡lets see⟡</code>
+                ，动作：下面那个「截屏快捷指令」
+                <br />· 锁屏 →
+                <code className="mx-1 bg-sunken px-1">⟡lock screen⟡</code>
+                ，动作：锁定屏幕（锁屏状态下也能用，不用解锁）
+                <br />
+                <strong className="text-ink-soft">那个「截屏快捷指令」</strong>
+                （上面查手机那条自动化调它）：截屏 → 转换图像（JPEG、质量 0.5）→ 获取 URL 内容（URL 填
                 <code className="mx-1 bg-sunken px-1">http://服务端IP:端口{displayPath}</code>
                 ，方法
                 <strong className="text-ink-soft">POST</strong>
@@ -784,15 +799,14 @@ function RoleSpyFields({ role, onGoto }) {
                 <code className="mx-1 bg-sunken px-1">image</code>
                 选「转换后的图像」）。
                 <br />
-                ② 再建一个
-                <strong className="text-ink-soft">个人自动化</strong>
-                →「邮件」→ 收到新邮件时，三个条件都设：发件人包含 SMTP 账号、主题包含主题关键字、收件人包含你的
-                iCloud 邮箱；动作选刚那个快捷指令，
+                <strong className="text-ink-soft">其余走邮件的那些事</strong>
+                （看微信、账单、电量、位置、闹钟、放歌…，用到才配）：各建一条
+                <strong className="text-ink-soft">「邮件」自动化</strong>
+                → 收到新邮件时，三个条件都设：发件人包含 SMTP 账号、主题包含该功能的主题词、收件人包含你的 iCloud 邮箱；动作选对应快捷指令，
                 <strong className="text-ink-soft">关掉「运行前询问」</strong>
                 。
                 <br />
-                ③ 测试：让角色查岗一次，看邮件几秒内到没到、快捷指令跑没跑。
-                需要 iOS 18.4 或更新版本（邮件自动化要求）。
+                需要 iOS 18.4 或更新版本（自动化要求）。改暗号在后端 spyphone.js 的 LINE_TOKENS，改完这里的「信息包含」跟着改。
               </p>
             </div>
           </div>
