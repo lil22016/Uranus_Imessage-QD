@@ -9,14 +9,15 @@
  * 太长会自动折成两三行。
  */
 
+/* from / to 是 HH:MM，含 from 不含 to；to 比 from 早 = 跨过午夜（比如 22:00 – 02:00）。设置里可以改（glass:cfg.ranges） */
 export const BUCKETS = [
-  { key: "late", label: "熬夜", range: "00:00 – 05:59", from: 0, to: 6 },
-  { key: "early", label: "起得早", range: "06:00 – 08:59", from: 6, to: 9 },
-  { key: "morning", label: "上午", range: "09:00 – 10:59", from: 9, to: 11 },
-  { key: "noon", label: "午饭", range: "11:00 – 13:59", from: 11, to: 14 },
-  { key: "afternoon", label: "下午", range: "14:00 – 16:59", from: 14, to: 17 },
-  { key: "evening", label: "傍晚", range: "17:00 – 19:59", from: 17, to: 20 },
-  { key: "night", label: "晚上", range: "20:00 – 23:59", from: 20, to: 24 },
+  { key: "late", label: "熬夜", from: "00:00", to: "06:00" },
+  { key: "early", label: "起得早", from: "06:00", to: "09:00" },
+  { key: "morning", label: "上午", from: "09:00", to: "11:00" },
+  { key: "noon", label: "午饭", from: "11:00", to: "14:00" },
+  { key: "afternoon", label: "下午", from: "14:00", to: "17:00" },
+  { key: "evening", label: "傍晚", from: "17:00", to: "20:00" },
+  { key: "night", label: "晚上", from: "20:00", to: "24:00" },
 ];
 export const EXTRA = [
   { key: "any", label: "随时", range: "任何时间都可能抽到" },
@@ -227,10 +228,33 @@ export const DEFAULT_LINES = {
   ],
 };
 
-/** 按小时找时间段 */
-export function bucketAt(date = new Date()) {
-  const h = date.getHours();
-  return (BUCKETS.find((b) => h >= b.from && h < b.to) || BUCKETS[0]).key;
+const toMin = (t) => {
+  const [h, m] = String(t || "").split(":").map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+};
+const okTime = (t) => /^([01]\d|2[0-4]):[0-5]\d$/.test(String(t || ""));
+
+/** 某一段实际用的时间：改过就用改过的 */
+export function rangeOf(ranges, key) {
+  const b = BUCKETS.find((x) => x.key === key);
+  if (!b) return null;
+  const r = ranges?.[key];
+  return { from: okTime(r?.from) ? r.from : b.from, to: okTime(r?.to) ? r.to : b.to };
+}
+export const rangeText = (ranges, key) => {
+  const r = rangeOf(ranges, key);
+  return r ? `${r.from} – ${r.to}` : "";
+};
+
+/** 现在落在哪一段（按列表顺序找第一个对上的）；哪段都不是就用「随时」 */
+export function bucketAt(date = new Date(), ranges) {
+  const now = date.getHours() * 60 + date.getMinutes();
+  for (const b of BUCKETS) {
+    const r = rangeOf(ranges, b.key), a = toMin(r.from), z = toMin(r.to);
+    if (a == null || z == null || a === z) continue;
+    if (a < z ? now >= a && now < z : now >= a || now < z) return b.key;
+  }
+  return "any";
 }
 
 /** 某一类实际用的句子：改过就用改过的，没改过（或删空了）用默认 */
@@ -243,10 +267,10 @@ export function linesOf(cfgLines, key) {
  * 抽一句。60% 当前时间段，25% 随时，15% 敲玻璃（是敲出来的话敲玻璃的比例翻倍）。
  * recent 里是最近出过的几句，尽量不重复。
  */
-export function pickLine(cfgLines, { knocked = false, recent = [], date = new Date() } = {}) {
+export function pickLine(cfgLines, { knocked = false, recent = [], date = new Date(), ranges } = {}) {
   const r = Math.random();
   const kk = knocked ? 0.3 : 0.12;
-  const key = r < kk ? "knock" : r < kk + 0.25 ? "any" : bucketAt(date);
+  const key = r < kk ? "knock" : r < kk + 0.25 ? "any" : bucketAt(date, ranges);
   let pool = linesOf(cfgLines, key);
   if (!pool.length) pool = linesOf(cfgLines, "any");
   const fresh = pool.filter((x) => !recent.includes(x));

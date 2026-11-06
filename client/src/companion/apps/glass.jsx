@@ -15,11 +15,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cx, imgUrl } from "../api.js";
 import { AppFrame, Field, Icon, Loading, Sheet, Toast, Toggle, uploadImage, useRemote, useToast } from "./kit.jsx";
 import { createGlass, ensureHandFont, knockSound, loadImage } from "./glassengine.js";
-import { BUCKETS, DEFAULT_LINES, EXTRA, bucketAt, linesOf, pickLine } from "./glasslines.js";
+import { BUCKETS, DEFAULT_LINES, EXTRA, bucketAt, linesOf, pickLine, rangeOf, rangeText } from "./glasslines.js";
 
 const DEFAULT_SCENE = "/glass/scene.jpg";
 const IDLE_FLUSH = 3 * 60000;
 const OFTEN = { rare: 0.4, normal: 0.75, always: 1 };
+const LINGER = { short: 12, normal: 20, long: 40 }; // 秒
 const KIND_W = { text: 55, hand: 22, lips: 13, knock: 10 };
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -94,7 +95,7 @@ export function GlassApp({ onExit }) {
         let busyFor = 4;
         if (kind === "text") {
           await ensureHandFont();
-          const line = pickLine(cfgRef.current?.lines, { knocked: trigger === "knock", recent: s.recent });
+          const line = pickLine(cfgRef.current?.lines, { knocked: trigger === "knock", recent: s.recent, ranges: cfgRef.current?.ranges });
           if (!line) return;
           s.recent = [line, ...s.recent].slice(0, 12);
           const size = clamp(W * 0.105, 30, 56);
@@ -109,7 +110,7 @@ export function GlassApp({ onExit }) {
             g.stamp(img, { cx: clamp(s.last.x + rand(-30, 30), W * 0.32, W * 0.68), cy: clamp(s.last.y + rand(-50, 30), H * 0.32, H * 0.66), w, rot: rand(-0.26, 0.22), flip: Math.random() < 0.5 });
           } else {
             const w = Math.min(W * 0.46, 290);
-            g.stamp(img, { cx: W * rand(0.36, 0.64), cy: H * rand(0.34, 0.6), w, rot: rand(-0.22, 0.22), press: true, hold: 8 });
+            g.stamp(img, { cx: W * rand(0.36, 0.64), cy: H * rand(0.34, 0.6), w, rot: rand(-0.22, 0.22), press: true });
           }
           busyFor = 5;
           note((x) => x.replies.push({ kind }));
@@ -178,6 +179,9 @@ export function GlassApp({ onExit }) {
   useEffect(() => {
     if (scene) engine.current?.setScene(scene);
   }, [scene]);
+  useEffect(() => {
+    engine.current?.setLinger(LINGER[cfg?.linger] ?? 20);
+  }, [cfg?.linger]);
 
   /* ── 什么时候把这一段发出去：离开、切到后台、3 分钟没动 ── */
   useEffect(() => {
@@ -291,7 +295,7 @@ function GlassSettings({ data, cfg, save, toast, onClose }) {
       toast(e.message);
     }
   };
-  const nowKey = bucketAt();
+  const nowKey = bucketAt(new Date(), cfg.ranges);
 
   return (
     <Sheet title="雾玻璃设置" onClose={onClose} tall>
@@ -317,6 +321,19 @@ function GlassSettings({ data, cfg, save, toast, onClose }) {
               ["always", "每次"],
             ].map(([k, l]) => (
               <button key={k} type="button" className={cfg.often === k ? "on" : ""} onClick={() => save({ often: k })}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="痕迹停留多久" hint="你擦开的雾、他写的字、手印和唇印，都按这个时间慢慢消失。">
+          <div className="la-seg">
+            {[
+              ["short", "短 · 约 12 秒"],
+              ["normal", "中 · 约 20 秒"],
+              ["long", "长 · 约 40 秒"],
+            ].map(([k, l]) => (
+              <button key={k} type="button" className={(cfg.linger || "normal") === k ? "on" : ""} onClick={() => save({ linger: k })}>
                 {l}
               </button>
             ))}
@@ -362,7 +379,7 @@ function GlassSettings({ data, cfg, save, toast, onClose }) {
       <div className="la-card">
         <h3>他写给你的话</h3>
         <p className="la-meta" style={{ margin: "0 0 10px" }}>
-          按你这边的时间抽句子。熬夜那一段算到早上 6 点。点一类可以改。
+          按你这边的时间抽句子。点进一类可以改时间段和句子。
         </p>
         {[...BUCKETS, ...EXTRA].map((b) => {
           const custom = Array.isArray(cfg.lines?.[b.key]) && cfg.lines[b.key].length;
@@ -373,7 +390,7 @@ function GlassSettings({ data, cfg, save, toast, onClose }) {
                   {b.label}
                   {b.key === nowKey && <i className="gl-now">现在</i>}
                 </b>
-                <small>{b.range}</small>
+                <small>{b.range || rangeText(cfg.ranges, b.key)}</small>
               </span>
               <span className="la-meta">
                 {linesOf(cfg.lines, b.key).length} 句{custom ? " · 改过" : ""}
@@ -390,23 +407,33 @@ function GlassSettings({ data, cfg, save, toast, onClose }) {
 
 function LinesEditor({ bucket, cfg, save, toast, onClose }) {
   const [text, setText] = useState(() => linesOf(cfg.lines, bucket.key).join("\n"));
+  const timed = !bucket.range; // 「随时」「敲玻璃」没有时间段
+  const [range, setRange] = useState(() => rangeOf(cfg.ranges, bucket.key));
   const rows = text.split("\n").map((x) => x.trim()).filter(Boolean);
-  const commit = async (arr) => {
+  const commit = async (arr, resetAll = false) => {
     const lines = { ...(cfg.lines || {}), [bucket.key]: arr };
     if (!arr.length) delete lines[bucket.key];
-    if (await save({ lines })) {
+    const patch = { lines };
+    if (timed) {
+      const ranges = { ...(cfg.ranges || {}) };
+      const def = BUCKETS.find((b) => b.key === bucket.key);
+      if (resetAll || (range.from === def.from && range.to === def.to)) delete ranges[bucket.key];
+      else ranges[bucket.key] = { from: range.from, to: range.to };
+      patch.ranges = ranges;
+    }
+    if (await save(patch)) {
       toast(arr.length ? "存好了" : "恢复成默认了");
       onClose();
     }
   };
   return (
     <Sheet
-      title={`${bucket.label} · ${bucket.range}`}
+      title={bucket.label}
       onClose={onClose}
       tall
       footer={
         <>
-          <button type="button" className="la-btn" onClick={() => commit([])}>
+          <button type="button" className="la-btn" onClick={() => commit([], true)}>
             恢复默认
           </button>
           <button type="button" className="la-btn solid" onClick={() => commit(rows)}>
@@ -415,6 +442,14 @@ function LinesEditor({ bucket, cfg, save, toast, onClose }) {
         </>
       }
     >
+      {timed && (
+        <Field label="时间段" hint="从开始时间算起，到结束时间之前。结束比开始早 = 跨过午夜（比如 22:00 到 02:00）。几段时间重叠时，排在上面的那一段优先；哪一段都没对上的时间用「随时」的句子。">
+          <div className="la-two">
+            <input type="time" value={range.from} onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))} aria-label="开始" />
+            <input type="time" value={range.to === "24:00" ? "00:00" : range.to} onChange={(e) => e.target.value && setRange((r) => ({ ...r, to: e.target.value }))} aria-label="结束" />
+          </div>
+        </Field>
+      )}
       <Field label="一行一句" hint="写在玻璃上的字要短，一句最好不超过 40 个字母左右。删空再保存 = 用回默认的。">
         <textarea className="gl-ta" value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
       </Field>

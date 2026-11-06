@@ -111,7 +111,7 @@ export function ensureHandFont() {
       if (!document.querySelector("link[data-glass-font]")) {
         const l = document.createElement("link");
         l.rel = "stylesheet";
-        l.href = "https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&display=swap";
+        l.href = "https://fonts.googleapis.com/css2?family=Caveat:wght@500&display=swap";
         l.setAttribute("data-glass-font", "1");
         document.head.appendChild(l);
       }
@@ -119,7 +119,7 @@ export function ensureHandFont() {
       const to = setTimeout(done, 2500);
       const tryLoad = () =>
         document.fonts
-          ?.load('700 48px "Caveat"')
+          ?.load('500 48px "Caveat"')
           .then(() => {
             clearTimeout(to);
             done();
@@ -143,6 +143,8 @@ export function createGlass(canvas, { onTap, onStrokeEnd, onTouch } = {}) {
   let marks = [];
   let drips = [];
   let raf = 0, last = 0, dirty = true, alive = true, lastRegrow = 0;
+  // 痕迹停留多久（秒）：擦开的雾、他写的字、手印都按这个时间慢慢消失，节奏一致
+  let linger = 20, upAt = 0;
   let pointer = null; // {id,x,y,t0,dist,lx,ly}
   let shakeUntil = 0;
 
@@ -267,10 +269,14 @@ export function createGlass(canvas, { onTap, onStrokeEnd, onTouch } = {}) {
     drips.push({ x, y, r: big ? rand(2, 3) : rand(1.3, 2.1), vy: rand(12, 30), stop: y + rand(30, big ? 220 : 120), drift: rand(-2.5, 2.5), life: 0 });
   }
 
-  /* 重新起雾：叠一层很淡的颗粒纹理，大约一分半钟回到满雾 */
+  /*
+   * 重新起雾：叠一层很淡的颗粒纹理。手指离开后先停 linger×0.45 秒，
+   * 再用 linger×0.5 秒左右回到满雾 —— 和他写的字淡掉的时间差不多。
+   */
   function regrow(dt) {
+    const k = -Math.log(0.05) / Math.max(2, linger * 0.5);
     maskCtx.save();
-    maskCtx.globalAlpha = clamp(dt * 0.012, 0, 0.05);
+    maskCtx.globalAlpha = clamp(1 - Math.exp(-k * dt), 0, 0.5);
     const p = maskCtx.createPattern(grain, "repeat");
     maskCtx.fillStyle = p;
     maskCtx.translate(Math.random() * 64, Math.random() * 64);
@@ -449,9 +455,11 @@ export function createGlass(canvas, { onTap, onStrokeEnd, onTouch } = {}) {
     if (!base) return;
     // 没在碰的时候慢慢起雾（约每 120ms 一次就够了）
     if (!pointer && now - lastRegrow > 120) {
-      regrow((now - lastRegrow) / 1000);
+      if (now - upAt > linger * 450) {
+        regrow(Math.min(0.5, (now - lastRegrow) / 1000));
+        dirty = true;
+      }
       lastRegrow = now;
-      dirty = true;
     }
     const busy = marks.length || drips.length || now < shakeUntil;
     if (!dirty && !busy) return;
@@ -494,7 +502,7 @@ export function createGlass(canvas, { onTap, onStrokeEnd, onTouch } = {}) {
     if (!pointer || e.pointerId !== pointer.id) return;
     const p = pointer;
     pointer = null;
-    lastRegrow = performance.now() + 1500; // 刚擦完先别马上起雾
+    upAt = performance.now();
     if (!p.wiping && performance.now() - p.t0 < 350) {
       // 点一下：指尖压开一个小点
       wipe(p.x, p.y, p.x, p.y, 9);
@@ -528,14 +536,17 @@ export function createGlass(canvas, { onTap, onStrokeEnd, onTouch } = {}) {
       if (alive && W) buildLayers();
     },
     /** 手印 / 唇印：img 是透明 PNG（白色 + alpha 就是形状） */
-    stamp(img, { cx, cy, w, rot = 0, flip = false, press = true, hold = 7, revealA, tintA } = {}) {
+    setLinger(sec) {
+      linger = clamp(Number(sec) || 20, 6, 120);
+    },
+    stamp(img, { cx, cy, w, rot = 0, flip = false, press = true, revealA, tintA } = {}) {
       const h = (w * img.height) / img.width;
-      return addMark({ src: img, cx, cy, w, h, rot, flip, press, fadeIn: press ? 0.35 : 1.1, hold, fadeOut: 5, revealA, tintA });
+      return addMark({ src: img, cx, cy, w, h, rot, flip, press, fadeIn: press ? 0.35 : 1.1, hold: linger * 0.5, fadeOut: linger * 0.3, revealA, tintA });
     },
     /** 他用手指在那边写字。返回大概要多久写完（秒） */
     write(text, { cx, cy, maxW, size, rot = 0 } = {}) {
       const k = 2; // 字的形状图按 2 倍画，放大缩小都不糊
-      const font = `700 ${size}px "Caveat", "Bradley Hand", "Segoe Print", cursive`;
+      const font = `500 ${size}px "Caveat", "Bradley Hand", "Segoe Print", cursive`;
       const mc = makeCanvas(4, 4).getContext("2d");
       mc.font = font;
       // 折行
@@ -561,8 +572,8 @@ export function createGlass(canvas, { onTap, onStrokeEnd, onTouch } = {}) {
       g.lineCap = "round";
       g.fillStyle = "#fff";
       g.strokeStyle = "#fff";
-      g.lineWidth = size * 0.09;
-      g.filter = "blur(0.6px)";
+      g.lineWidth = size * 0.03;
+      g.filter = "blur(0.4px)";
       const lines = [];
       rows.forEach((r, i) => {
         const x = (bw - widths[i]) / 2 + rand(-size * 0.12, size * 0.12);
@@ -593,10 +604,10 @@ export function createGlass(canvas, { onTap, onStrokeEnd, onTouch } = {}) {
         writeTime,
         dripLeft: Math.random() < 0.7 ? 1 + (rows.length > 1 ? 1 : 0) : 0,
         fadeIn: 0.001,
-        hold: writeTime + 6 + total * 0.05,
-        fadeOut: 4.5,
-        revealA: 0.85,
-        tintA: 0.3,
+        hold: writeTime + linger * 0.5 + total * 0.03,
+        fadeOut: linger * 0.3,
+        revealA: 0.9,
+        tintA: 0.36,
         img,
       });
       return writeTime;
