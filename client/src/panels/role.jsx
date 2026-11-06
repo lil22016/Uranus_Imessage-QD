@@ -677,9 +677,9 @@ function RoleSpyFields({ role, onGoto }) {
                 <strong className="text-ink-soft">① 查手机、回到聊天、锁屏</strong>
                 这三件走
                 <strong className="text-ink-soft"> iMessage 暗号</strong>
-                —— 服务端往对话里发一条带 ✧ 的暗号，你的「信息」自动化即时接住。好处是
+                —— 服务端往对话里发一条带 ⟡ 的暗号，你的「信息」自动化即时接住。好处是
                 <strong className="text-ink-soft">即时、且不受低电量模式影响</strong>
-                （邮件在低电量下既不推送也不拉取，要等解锁或手动收信，常晚几十分钟）。代价是暗号会出现在你俩的对话气泡里 —— ✧ 一般打字打不出，角色的 *动作* 星号不会误触发。
+                （邮件在低电量下既不推送也不拉取，要等解锁或手动收信，常晚几十分钟）。代价是暗号会出现在你俩的对话气泡里 —— ⟡ 一般打字打不出，角色的 *动作* 星号不会误触发。
                 <br />
                 <strong className="text-ink-soft">② 其余十几件事</strong>
                 （看微信、账单、电量、位置、闹钟、放歌…）仍走
@@ -777,13 +777,13 @@ function RoleSpyFields({ role, onGoto }) {
                 <strong className="text-ink-soft">「信息」自动化</strong>
                 —— 发件人选角色发消息用的那个号码、「信息包含」填下面对应的暗号（整个粘进去，别手打）、选「立即运行」并关掉「运行前询问」：
                 <br />· 回到聊天 →
-                <code className="mx-1 bg-sunken px-1">✧come back✧</code>
+                <code className="mx-1 bg-sunken px-1">⟡come back⟡</code>
                 ，动作：打开当前聊天
                 <br />· 查手机 →
-                <code className="mx-1 bg-sunken px-1">✧lets see✧</code>
+                <code className="mx-1 bg-sunken px-1">⟡lets see⟡</code>
                 ，动作：下面那个「截屏快捷指令」
                 <br />· 锁屏 →
-                <code className="mx-1 bg-sunken px-1">✧lock screen✧</code>
+                <code className="mx-1 bg-sunken px-1">⟡lock screen⟡</code>
                 ，动作：锁定屏幕（锁屏状态下也能用，不用解锁）
                 <br />
                 <strong className="text-ink-soft">那个「截屏快捷指令」</strong>
