@@ -1660,6 +1660,27 @@ export function MapModelForm({ initial, profiles, mainProfileId, providers: give
         </div>
         <small>按部就班：基本只照日程。自然：日程是参考，中间会顺路办事、在家里换房间，合适的时候来找你。随性：经常临时起意，想你了就过来。</small>
       </div>
+      <Toggle
+        checked={s.pastDaysEnabled !== false}
+        onChange={(v) => set("pastDaysEnabled", v)}
+        label={`判断时让${name}看到前几天的行程`}
+        hint={`打开：把前几天去过哪、做了什么告诉模型，并让它别照着重复。关掉：完全不给以前的记录，每天重新想（但模型没参照时也可能落回很普通的固定日常）。今天已经走过的地方不受影响，一直会给，保证当天前后连贯。`}
+      />
+      {s.pastDaysEnabled !== false && (
+        <div className="la-field mp-days-n">
+          <span>看前几天</span>
+          <div className="mp-stepper">
+            <button type="button" onClick={() => set("pastDays", Math.max(1, (Number(s.pastDays) || 3) - 1))} aria-label="少一天">
+              −
+            </button>
+            <b>{Number(s.pastDays) || 3} 天</b>
+            <button type="button" onClick={() => set("pastDays", Math.min(7, (Number(s.pastDays) || 3) + 1))} aria-label="多一天">
+              +
+            </button>
+          </div>
+          <small>1–7 天，每天压成一行，多给几天只多几十个 token。</small>
+        </div>
+      )}
       <Toggle checked={s.reactToUser !== false} onChange={(v) => set("reactToUser", v)} label={`你换位置时让${name}看到`} hint="你在地图上把自己挪到别的地方后，5–25 分钟内会额外判断一次：他看到了，自己决定要不要过来找你。会多调一次模型。" />
       <Toggle checked={s.usePersona} onChange={(v) => set("usePersona", v)} label="判断时带上人设" hint="用 Companion 设置里的角色人设（截前 1200 字）。关掉更省 token，但判断会更「泛」。" />
       <Field label="「在做什么」用什么语言（留空 = 跟地点名一样）">
@@ -1790,6 +1811,11 @@ const CSS = `
 .mp-avs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .mp-avs>div{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 6px;border-radius:16px;background:#ffffff08}
 .mp-avs .la-btn{font-size:12.5px;min-height:34px;padding:0 10px!important}
+.mp-days-n{margin-top:-4px}
+.mp-stepper{display:inline-flex;align-items:center;gap:4px;padding:3px;border-radius:999px;background:#ffffff10;border:1px solid var(--l)}
+.mp-stepper button{width:36px;height:32px;border-radius:999px!important;font-size:18px;color:var(--ink)}
+.mp-stepper button:active{background:#ffffff18!important}
+.mp-stepper b{min-width:52px;text-align:center;font-weight:600;font-size:14px}
 .mp-quiet{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .mp-quiet input{flex:1;min-width:0;padding:9px 10px;border-radius:12px;border:1px solid var(--l);background:#ffffff0a;font-size:16px;color-scheme:dark}
 .mp-quiet span{font-size:13px;color:var(--faint)}
