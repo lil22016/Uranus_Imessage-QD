@@ -26,13 +26,16 @@ export function PeriodApp({ onExit }) {
   const sum = data?.summary || {};
   const today = data?.today || new Date().toLocaleDateString("en-CA");
   const curMonth = month || today.slice(0, 7);
+  const name = data?.characterName || "他";
 
-  async function save(nextRecords, nextSettings) {
+  /** event: "start" / "end" —— 只有「今天来了」「今天结束了」带这个，后端会马上发给他（像朋友圈点赞一样） */
+  async function save(nextRecords, nextSettings, event = "") {
     const prev = data;
     setData({ ...data, records: nextRecords, settings: nextSettings || data.settings });
     try {
-      setData(await cx("/period", { method: "PUT", body: { records: nextRecords, settings: nextSettings || data.settings } }));
-      return true;
+      const r = await cx("/period", { method: "PUT", body: { records: nextRecords, settings: nextSettings || data.settings, event } });
+      setData(r);
+      return event ? { told: !!r.told } : true;
     } catch (e) {
       setData(prev);
       toast(e.message);
@@ -98,11 +101,13 @@ export function PeriodApp({ onExit }) {
     if (sum.inPeriod) {
       const r = recOn(today);
       if (!r) return;
-      if (await save(records.map((x) => (x.id === r.id ? { ...x, endDate: today } : x)))) toast("记下了：今天结束");
+      const ok = await save(records.map((x) => (x.id === r.id ? { ...x, endDate: today } : x)), null, "end");
+      if (ok) toast(`记下了：今天结束${ok.told ? ` · 已告诉${name}` : ""}`);
     } else {
       const r = startOn(today);
-      if (r && (await save(r))) {
-        toast("记下了：今天开始");
+      const ok = r && (await save(r, null, "start"));
+      if (ok) {
+        toast(`记下了：今天开始${ok.told ? ` · 已告诉${name}` : ""}`);
         setDay(today);
       }
     }
@@ -304,7 +309,8 @@ function DaySheet({ d, today, rec, records, sum, mark, onClose, save, startOn, t
                 const r = startOn(d);
                 if (!r) return;
                 setBusy(true);
-                if (await save(r)) toast(`记下了：${md(d)} 开始`);
+                const ok = await save(r, null, d === today ? "start" : "");
+                if (ok) toast(`记下了：${md(d)} 开始${ok.told ? " · 已告诉他" : ""}`);
                 setBusy(false);
               }}
             >
@@ -404,8 +410,9 @@ function DaySheet({ d, today, rec, records, sum, mark, onClose, save, startOn, t
             disabled={busy}
             onClick={async () => {
               setBusy(true);
-              if (await save(records.map((x) => (x.id === rec.id ? { ...x, endDate: d } : x)))) {
-                toast(`这次经期结束在 ${md(d)}`);
+              const ok = await save(records.map((x) => (x.id === rec.id ? { ...x, endDate: d } : x)), null, d === today ? "end" : "");
+              if (ok) {
+                toast(`这次经期结束在 ${md(d)}${ok.told ? " · 已告诉他" : ""}`);
                 onClose();
               }
               setBusy(false);
@@ -542,7 +549,7 @@ function PeriodSettings({ data, records, save, toast, onClose }) {
           <input type="number" min="1" max="15" value={s.periodLength} onChange={(e) => setS({ ...s, periodLength: Number(e.target.value) })} />
         </Field>
       </div>
-      <Toggle checked={s.tellCharacter} onChange={(v) => setS({ ...s, tellCharacter: v })} label={`来的时候告诉${data.characterName || "他"}`} hint="记下「今天 / 昨天开始」时，作为背景信息同步给 Uranus，不会逼他立刻回消息。不管开不开，他都能在需要时通过 MCP 查。" />
+      <Toggle checked={s.tellCharacter} onChange={(v) => setS({ ...s, tellCharacter: v })} label={`来了 / 结束了的时候告诉${data.characterName || "他"}`} hint={`点「今天来了」或「今天结束了」时，会像你给他朋友圈点赞一样马上发给他，他可能会回你消息。补记以前的、导入、记每天的感受都不会发。不管开不开，他都能在需要时通过 MCP 查。`} />
 
       <div className="pd-imp">
         <h4>从拾心界导入</h4>
