@@ -31,7 +31,7 @@ export const KINDS = {
   other: ["📍", "#b2a68c", "其他"],
 };
 const kindOf = (k) => KINDS[k] || KINDS.other;
-const BY = { model: "按日程判断", mcp: "他自己说的", user: "你设置的", schedule: "按日程" };
+const BY = { model: "按日程判断", mcp: "他自己说的", user: "你设置的", schedule: "按日程", itinerary: "按聊天还原" };
 const METERS_PER_UNIT = 4; // 整张图 4 公里见方
 
 /* ═════════════ App ═════════════ */
@@ -106,16 +106,29 @@ export function MapApp({ onExit, avatars = {}, providers }) {
   /* Session：哪几天有记录 */
   const today = data?.today || "";
   const visits = data?.visits || [];
+  const onDemand = (data?.settings?.mode || "ondemand") !== "auto";
+  const itins = data?.itins || {};
   const dayList = useMemo(() => {
     const s = new Set(visits.map((v) => v.date));
-    if (today) s.add(today);
+    if (today) {
+      s.add(today);
+      // 按需模式：最近 7 天都列出来，没看过的那天也能点进去生成
+      if (onDemand) for (let i = 1; i <= 7; i++) s.add(plusDays(today, -i));
+    }
     return [...s].sort().reverse();
-  }, [visits, today]);
+  }, [visits, today, onDemand]);
   const curDay = day || today;
   const dayVisits = useMemo(() => visitsOn(visits, curDay, today), [visits, curDay, today]);
 
   const hourNow = Number(String(data?.now || "12:00").slice(0, 2));
   const tint = hourNow >= 20 || hourNow < 6 ? "night" : hourNow >= 18 ? "dusk" : hourNow < 7 ? "dawn" : "";
+
+  /** 按需模式：按那天的聊天还原行程（今天再点 = 补到现在） */
+  async function viewDay(d, regenerate = false) {
+    const r = await act("itin", () => cx("/map/itinerary", { method: "POST", body: { date: d, regenerate } }), (x) => (x.cached ? "这天已经生成过了" : `排好了${x.chatMessages ? `（参考了 ${x.chatMessages} 条聊天）` : "（那天没聊天，按他的日常排的）"}${x.told ? ` · ${name} 知道你看了` : ""}`));
+    if (r?.chatError) toast(`读不到那天的聊天：${r.chatError}`);
+    return r;
+  }
 
   async function act(key, fn, ok) {
     setBusy(key);
@@ -310,13 +323,36 @@ export function MapApp({ onExit, avatars = {}, providers }) {
                       </div>
                     </>
                   ) : (
-                    <div className="la-meta">还不知道他在哪。{places.length ? "点下面「现在更新一次」，或者手动设一个。" : "先去「地点」里加几个他常去的地方。"}</div>
+                    <div className="la-meta">还不知道他在哪。{places.length ? (onDemand ? "点下面「查看今天的行程」，或者手动设一个。" : "点下面「现在更新一次」，或者手动设一个。") : "先去「地点」里加几个他常去的地方。"}</div>
                   )}
                 </div>
                 <button type="button" className="la-btn" disabled={!places.length} onClick={() => setSheet({ kind: "move" })}>
                   设置
                 </button>
               </div>
+              {onDemand ? (
+                <>
+                  <div className="mp-next">
+                    <span>按需模式 · {itins[today] ? `今天看到 ${itins[today].upTo}` : "今天还没查看"}</span>
+                    {!itins[today] && here && <small>上面是上次查看时他在的地方。</small>}
+                    <small>平时不判断、不告诉 Uranus；点下面的按钮才按你们今天的聊天还原他的行程。</small>
+                  </div>
+                  <div className="la-row" style={{ marginBottom: 16 }}>
+                    <button
+                      type="button"
+                      className="la-btn solid"
+                      disabled={!!busy}
+                      onClick={async () => {
+                        const r = await viewDay(today);
+                        if (r?.ok) setTab("session"), setDay(today);
+                      }}
+                    >
+                      <Icon n="route" size={16} /> {busy === "itin" ? "正在还原他的一天…" : itins[today] ? "更新到现在" : "查看今天的行程"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+              <>
               <div className="mp-next">
                 {!data.settings.enabled ? (
                   <span>自动更新没开 · 在右上角设置里打开</span>
@@ -337,6 +373,8 @@ export function MapApp({ onExit, avatars = {}, providers }) {
                 </button>
               </div>
               <p className="la-meta" style={{ marginTop: -8 }}>「现在更新一次」会调一次模型（大约一两千 token）。</p>
+              </>
+              )}
 
               <div className="mp-person me">
                 <Avatar img={meImg} letter={me} size={44} ring="#9cc3e6" />
@@ -418,6 +456,34 @@ export function MapApp({ onExit, avatars = {}, providers }) {
                   </button>
                 ))}
               </div>
+              {onDemand && (
+                <div className="mp-itin">
+                  {itins[curDay] ? (
+                    <>
+                      <span>
+                        {curDay === today ? `今天的行程已经看到 ${itins[curDay].upTo}` : "这天的行程已经生成"}
+                      </span>
+                      {curDay === today ? (
+                        <button type="button" className="la-btn solid" disabled={!!busy} onClick={() => viewDay(curDay)}>
+                          {busy === "itin" ? "正在补…" : "更新到现在"}
+                        </button>
+                      ) : (
+                        <button type="button" className="la-btn ghost" disabled={!!busy} onClick={() => window.confirm("按那天的聊天整天重新排一遍？现在这版会被替换。") && viewDay(curDay, true)}>
+                          {busy === "itin" ? "正在排…" : "重新生成"}
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span>{dayVisits.length ? "这天有之前的记录，还没按聊天还原过" : curDay === today ? "今天的行程还没生成" : "这天的行程还没生成"}</span>
+                      <button type="button" className="la-btn solid" disabled={!!busy} onClick={() => viewDay(curDay, !!dayVisits.length)}>
+                        <Icon n="route" size={15} /> {busy === "itin" ? "正在还原…" : curDay === today ? "查看今天的行程" : "查看这天的行程"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+              {busy === "itin" && <p className="la-meta" style={{ textAlign: "center" }}>正在根据你们那天的聊天还原他的行程，十几秒左右…</p>}
               <SessionList
                 visits={dayVisits}
                 day={curDay}
@@ -1567,7 +1633,29 @@ export function MapModelForm({ initial, profiles, mainProfileId, providers: give
 
   return (
     <div className="mp-form">
-      <Toggle checked={s.enabled} onChange={(v) => set("enabled", v)} label={`自动更新${name}的位置`} hint="到点让模型按他的日程、时间、人设判断他在哪。关掉以后只有你手动设置、或者他在聊天里自己挪（MCP）才会动。" />
+      <div className="la-field">
+        <span>{name} 的位置怎么来</span>
+        <div className="la-seg">
+          {[
+            ["ondemand", "按需（点了才生成）"],
+            ["auto", "自动（隔几小时判断）"],
+          ].map(([k, label]) => (
+            <button key={k} type="button" className={(s.mode || "ondemand") === k ? "on" : ""} onClick={() => set("mode", k)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <small>
+          {s.mode === "auto"
+            ? "自动：隔几个小时让模型按日程判断一次他在哪，并（可选）告诉 Uranus。地图会影响他在聊天里的说法。"
+            : "按需：平时什么都不做、不花 token、不告诉 Uranus，他在聊天里想干什么都行。你在 Session 里点「查看这天的行程」时，才按那天你们的聊天还原出他几点在哪、在做什么。"}
+        </small>
+      </div>
+      {s.mode === "auto" ? (
+        <Toggle checked={s.enabled} onChange={(v) => set("enabled", v)} label={`自动更新${name}的位置`} hint="到点让模型按他的日程、时间、人设判断他在哪。关掉以后只有你手动设置、或者他在聊天里自己挪（MCP）才会动。" />
+      ) : (
+        <Toggle checked={s.tellOnView !== false} onChange={(v) => set("tellOnView", v)} label={`查看行程时让${name}知道`} hint={`你点「查看行程」时，像给他点赞一样告诉他一声「你看了他今天去了哪」（有点查岗的意思），他可能会回你。不会告诉他地图上排了什么。同一天 30 分钟内只说一次。`} />
+      )}
       <Field label="用哪个模型">
         <select value={s.source === "uranus" ? "uranus" : "profile"} onChange={(e) => set("source", e.target.value)}>
           <option value="profile">Companion 里的模型</option>
@@ -1613,6 +1701,8 @@ export function MapModelForm({ initial, profiles, mainProfileId, providers: give
         </div>
       )}
       {provErr && <p className="la-err">读不到 Uranus 的连接：{provErr}</p>}
+      {s.mode === "auto" && (
+      <>
       <div className="la-two">
         <Field label="最短隔多久（小时）">
           <input type="number" min="0.5" max="12" step="0.5" value={s.minHours} onChange={(e) => set("minHours", e.target.value)} />
@@ -1642,9 +1732,11 @@ export function MapModelForm({ initial, profiles, mainProfileId, providers: give
         )}
         <small>跨午夜的写法：23:30 到 08:00。按 Companion 设置里的时区算。</small>
       </div>
+      </>
+      )}
 
       <Toggle checked={s.allowNewPlaces} onChange={(v) => set("allowNewPlaces", v)} label={`允许${name}自己加新地点`} hint="模型判断时、或者他在聊天里用 MCP 去一个没登记过的地方时，自动加进地点表。" />
-      <Toggle checked={s.syncToUranus} onChange={(v) => set("syncToUranus", v)} label="位置变了告诉 Uranus" hint="作为背景信息同步（一句话，不花 token、不会逼他回消息），这样他在聊天里说的和地图对得上。他自己挪的不重复同步。" />
+      {s.mode === "auto" && <Toggle checked={s.syncToUranus} onChange={(v) => set("syncToUranus", v)} label="位置变了告诉 Uranus" hint="作为背景信息同步（一句话，不花 token、不会逼他回消息），这样他在聊天里说的和地图对得上。他自己挪的不重复同步。" />}
       <div className="la-field">
         <span>日程之外，{name} 有多随性</span>
         <div className="la-seg">
@@ -1681,7 +1773,7 @@ export function MapModelForm({ initial, profiles, mainProfileId, providers: give
           <small>1–7 天，每天压成一行，多给几天只多几十个 token。</small>
         </div>
       )}
-      <Toggle checked={s.reactToUser !== false} onChange={(v) => set("reactToUser", v)} label={`你换位置时让${name}看到`} hint="你在地图上把自己挪到别的地方后，5–25 分钟内会额外判断一次：他看到了，自己决定要不要过来找你。会多调一次模型。" />
+      {s.mode === "auto" && <Toggle checked={s.reactToUser !== false} onChange={(v) => set("reactToUser", v)} label={`你换位置时让${name}看到`} hint="你在地图上把自己挪到别的地方后，5–25 分钟内会额外判断一次：他看到了，自己决定要不要过来找你。会多调一次模型。" />}
       <Toggle checked={s.usePersona} onChange={(v) => set("usePersona", v)} label="判断时带上人设" hint="用 Companion 设置里的角色人设（截前 1200 字）。关掉更省 token，但判断会更「泛」。" />
       <Field label="「在做什么」用什么语言（留空 = 跟地点名一样）">
         <input value={s.language || ""} placeholder="中文 / English" onChange={(e) => set("language", e.target.value)} />
@@ -1781,6 +1873,8 @@ const CSS = `
 .mp-days button small{font-size:10.5px;color:var(--faint)}
 .mp-days button.on{background:var(--ac)!important;color:var(--ac-ink)}
 .mp-days button.on small{color:#2b1d1299}
+.mp-itin{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 12px;padding:10px 10px 10px 14px;border-radius:16px;background:#f0b47e14;border:1px solid #f0b47e33;font-size:13px;color:#f3d8bf}
+.mp-itin .la-btn{min-height:36px;font-size:13px}
 .mp-sum{margin:2px 0 10px;font-size:13px;color:var(--dim)}
 .mp-sum b{color:var(--ink)}
 .mp-tl{list-style:none;margin:0;padding:0 0 0 4px;position:relative}
