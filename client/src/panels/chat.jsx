@@ -18,6 +18,27 @@ export function ChatPanel() {
   return (
     <Card title="发送节奏" desc="所有角色共用的收发节奏：气泡怎么拆、连发怎么合并">
       <div className="grid grid-cols-1 gap-10">
+        {/* 暂停回复：这阵子不用 iMessage 聊天时打开 */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-ink">暂停回复</div>
+            <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+              打开后，iMessage 收到的消息一律不回、不调模型，主动消息也不发。
+              号码、角色、记忆和其他功能都保留；关掉就恢复。改完记得点下面的「保存」。
+            </p>
+            {config.chat.pauseReply && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-amber-600">
+                <AlertTriangle size={12} /> 现在是暂停状态，发消息不会有回复
+              </p>
+            )}
+          </div>
+          <Switch
+            checked={Boolean(config.chat.pauseReply)}
+            onChange={(v) => updateChat({ pauseReply: v })}
+            label="暂停回复"
+          />
+        </div>
+
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <Field label="气泡分隔符" hint="按此符号拆成多条气泡">
             <input
