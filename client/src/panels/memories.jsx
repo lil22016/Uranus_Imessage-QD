@@ -407,12 +407,13 @@ function useGenerate(memKey, reload) {
   const [msg, setMsg] = useState("");
 
   const run = useCallback(
-    async (kind, hint) => {
+    async (kind, hint, body) => {
       setState("loading");
       setMsg(hint);
       try {
         const r = await api(`/api/memories/${encodeURIComponent(memKey)}/generate/${kind}`, {
           method: "POST",
+          ...(body ? { body } : {}),
         });
         setState(r.ok ? "ok" : "fail");
         setMsg(r.text || r.error || (r.ok ? "生成成功" : "没有成功，原因不明"));
@@ -497,7 +498,7 @@ function FailNote({ fails, lastError, at, modelRef }) {
  * `extra` 是留给某一页自己多出来的那个按钮（现在只有日记的「自己写一篇」）。
  * 排在最左边：它是「不打模型」的那一类，和右边两个花钱的分开站。
  */
-function PageBar({ note, gen, genKind, genHint, genLabel, genBusyLabel, pendingLabel, onPending, busy, extra }) {
+function PageBar({ note, gen, genKind, genHint, genLabel, genBusyLabel, genBody, genPicker, pendingLabel, onPending, busy, extra }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="min-w-0 max-w-[62ch] text-meta leading-relaxed text-ink-faint">{note}</p>
@@ -506,9 +507,10 @@ function PageBar({ note, gen, genKind, genHint, genLabel, genBusyLabel, pendingL
         <Button variant="outline" onClick={onPending} disabled={busy}>
           <Inbox size={14} /> {pendingLabel}
         </Button>
+        {genPicker}
         <Button
           variant="outline"
-          onClick={() => gen.run(genKind, genHint)}
+          onClick={() => gen.run(genKind, genHint, genBody)}
           disabled={gen.busy || busy}
         >
           {gen.busy ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
@@ -1286,9 +1288,30 @@ function DiaryPage({ memKey, detail, gate, role, modelRef, reload, onGoto }) {
   const [picked, setPicked] = useState(""); // 选中的那天 `YYYY-MM-DD`
   const [month, setMonth] = useState(null); // {y, m}，null = 还没定，取最近一篇那个月
   const [error, setError] = useState("");
+  const [genDate, setGenDate] = useState(""); // 「立刻写一篇」写哪天；空 = 按流水最后一条自动算
 
   const diaries = detail.diaries ?? [];
   const log = detail.diaryLog ?? "";
+  /*
+   * 流水里有哪几天（每天几条）。和后端 splitDiaryLogByDay 同一个规矩：
+   * 行首 `YYYY-MM-DD 星期X HH:MM`，凌晨 05:00 前的算前一天。
+   * 选了某天，就只拿那天及以前的流水写一篇记在那天，之后的留着。
+   */
+  const logDays = useMemo(() => {
+    const count = new Map();
+    for (const line of log.split(/\r?\n/)) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})\s+\S+\s+(\d{2}):\d{2}/.exec(line.trim());
+      if (!m) continue;
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      if (Number(m[4]) < 5) d.setDate(d.getDate() - 1);
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      count.set(k, (count.get(k) || 0) + 1);
+    }
+    return [...count.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [log]);
+  useEffect(() => {
+    if (genDate && !logDays.some(([d]) => d === genDate)) setGenDate("");
+  }, [logDays, genDate]);
   const state = detail.diaryState ?? {};
   const injectDays = role?.memories?.diary?.injectDays ?? 3;
 
@@ -1386,8 +1409,29 @@ function DiaryPage({ memKey, detail, gate, role, modelRef, reload, onGoto }) {
         gen={gen}
         genKind="diary"
         genHint="正在写，一篇两千字要打一次模型，几十秒…"
-        genLabel="立刻写一篇"
+        genLabel={genDate ? `立刻写 ${genDate.slice(5)} 的` : "立刻写一篇"}
         genBusyLabel="写作中…"
+        genBody={genDate ? { date: genDate } : undefined}
+        genPicker={
+          logDays.length > 0 ? (
+            <label className="flex items-center gap-1.5 text-meta text-ink-soft">
+              写哪天
+              <select
+                value={genDate}
+                onChange={(e) => setGenDate(e.target.value)}
+                disabled={gen.busy}
+                className="rounded-item border border-line bg-sunken px-2 py-1.5 text-meta text-ink"
+              >
+                <option value="">自动（流水最后一天）</option>
+                {logDays.map(([d, n]) => (
+                  <option key={d} value={d}>
+                    {d.slice(5)}（{n} 条，含之前没写的）
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null
+        }
         pendingLabel={`待总结的流水（${log.trim().length} 字）`}
         onPending={() => setPendingView(true)}
         busy={false}
