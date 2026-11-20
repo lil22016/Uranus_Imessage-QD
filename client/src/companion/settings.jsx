@@ -361,15 +361,36 @@ function OrganizerCard({ s, up, data, save, ctx }) {
 }
 
 /**
- * 拾心界：日记来源切换 + 推送口令 + 写日记的设置。
- * 设置（s.sxj / s.diarySource）跟着整页的「保存」一起存；口令和状态单独走 /sxj/*。
+ * 拾心界：日记来源一键切换 + 状态 + 同步链接 + 写日记的设置。
+ *  - 「现在用的是」两个大按钮：点了立刻生效（走 /sxj/mode，同时开 / 关 Uranus 的「暂停回复」），不用再点保存
+ *  - 其余设置（s.sxj）跟着整页的「保存设置」一起存
  */
-function ShixinjieCard({ s, up, save, ctx }) {
+const SXJ_CSS = `
+.sxj-sec{margin-top:18px}
+.sxj-h{font-size:12px;letter-spacing:.06em;opacity:.62;margin:0 0 8px}
+.sxj-seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sxj-seg button{padding:12px 8px;border-radius:14px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.05);color:inherit;font-size:14px;line-height:1.3;cursor:pointer}
+.sxj-seg button.on{background:#d6c2a8;color:#242128;border-color:#d6c2a8;font-weight:650}
+.sxj-seg button small{display:block;font-size:11px;opacity:.75;font-weight:400;margin-top:2px}
+.sxj-box{border-radius:14px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.04);padding:10px 12px;overflow-wrap:anywhere;word-break:break-word}
+.sxj-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid rgba(255,255,255,.08)}
+.sxj-row:first-child{border-top:0}
+.sxj-row .meta{margin:0}
+.sxj-bad{color:#f08a8a}
+.sxj-ok{color:#9fd3a8}
+.sxj-mini{padding:4px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:transparent;color:inherit;font-size:12px;white-space:nowrap;cursor:pointer}
+.sxj-link{width:100%;font-size:12px;text-overflow:ellipsis}
+.sxj-stack > * + *{margin-top:10px}
+.sxj-pre{white-space:pre-wrap;max-height:240px;overflow:auto;font-size:12px;margin:8px 0 0}
+`;
+
+function ShixinjieCard({ s, up, save, ctx, profiles, providers }) {
   const { load, toast } = ctx;
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState("");
   const [force, setForce] = useState(false);
   const [day, setDay] = useState(null);
+  const [adv, setAdv] = useState(false);
   async function refresh() {
     try {
       setInfo(await cx("/sxj/info"));
@@ -386,9 +407,24 @@ function ShixinjieCard({ s, up, save, ctx }) {
   const set = (k, v) => up(["sxj", k], v);
   const mode = s.diarySource === "shixinjie" ? "shixinjie" : "uranus";
   const link = info?.token ? `${info.url}/sxj/ingest?t=${info.token}` : "";
+  const fmt = (t) => (t ? new Date(t).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
 
+  async function switchTo(m) {
+    if (m === mode && info && info.uranusPaused === (m === "shixinjie")) return;
+    setBusy("mode");
+    try {
+      const r = await cx("/sxj/mode", { method: "POST", body: { mode: m } });
+      up(["diarySource"], r.mode);
+      setInfo((x) => (x ? { ...x, mode: r.mode, uranusPaused: r.uranusPaused, uranusError: r.uranusError } : x));
+      if (r.uranusError) toast(`已切到${m === "shixinjie" ? "拾心界" : "Uranus"}，但 Uranus 的「暂停回复」没改成：${r.uranusError}。请去 Uranus 控制台「发送」里手动${m === "shixinjie" ? "打开" : "关掉"}`);
+      else toast(m === "shixinjie" ? "已切到拾心界：日记从拾心界写，Uranus 已暂停回复" : "已切回 Uranus：日记从 Uranus 整理，Uranus 恢复回复");
+    } catch (e) {
+      toast(e.message);
+    }
+    setBusy("");
+  }
   async function makeToken() {
-    if (info?.token && !window.confirm("重新生成后，旧的同步链接立刻失效，拾心界里要重新粘贴。继续？")) return;
+    if (info?.token && !window.confirm("重新生成后，旧链接立刻失效，拾心界里要重新粘贴。继续？")) return;
     setBusy("tok");
     try {
       await cx("/sxj/token", { method: "POST" });
@@ -404,36 +440,36 @@ function ShixinjieCard({ s, up, save, ctx }) {
       await navigator.clipboard.writeText(link);
       toast("已复制");
     } catch {
-      toast("复制失败，请手动选中复制");
+      toast("复制失败，请长按输入框手动复制");
     }
   }
-  async function runNow() {
-    setBusy("run");
+  async function run(date, f) {
+    setBusy("run:" + (date || "today"));
     try {
       await save(true);
-      const r = await cx("/sxj/run", { method: "POST", body: { force } });
+      const r = await cx("/sxj/run", { method: "POST", body: { date, force: f } });
       toast(`日记写好了（${r.date}）· 明天的新活动 ${r.todos} 个`);
       await load();
-      await refresh();
     } catch (e) {
       toast(e.message);
-      await refresh();
     }
+    await refresh();
     setBusy("");
   }
   async function copyPersona() {
-    if (s.agent?.persona && !window.confirm("这会用 Uranus 里的角色人设替换下面「人设」卡片里现在的内容。继续？")) return;
+    if (s.agent?.persona && !window.confirm("这会用 Uranus 里的角色人设替换「人设」卡片里现在的内容。继续？")) return;
     setBusy("persona");
     try {
       const r = await cx("/sxj/copy-persona", { method: "POST" });
       up(["agent", "persona"], r.persona);
-      toast(`已从 Uranus 的「${r.from}」复制人设`);
+      toast(`已从 Uranus 的「${r.from}」复制人设，记得点「保存设置」`);
     } catch (e) {
       toast(e.message);
     }
     setBusy("");
   }
   async function peek() {
+    if (day) return setDay(null);
     try {
       setDay(await cx("/sxj/day"));
     } catch (e) {
@@ -441,125 +477,213 @@ function ShixinjieCard({ s, up, save, ctx }) {
     }
   }
 
+  const modelVal = c.source === "uranus" && c.uranusProviderId ? "u:" + c.uranusProviderId : c.profileId ? "p:" + c.profileId : "";
+  const pickedProvider = providers.find((p) => p.id === c.uranusProviderId);
+  function pickModel(v) {
+    if (!v) up(["sxj"], { ...(s.sxj || {}), source: "profile", profileId: "", uranusProviderId: "", model: "" });
+    else if (v.startsWith("p:")) up(["sxj"], { ...(s.sxj || {}), source: "profile", profileId: v.slice(2), uranusProviderId: "", model: "" });
+    else up(["sxj"], { ...(s.sxj || {}), source: "uranus", profileId: "", uranusProviderId: v.slice(2), model: "" });
+  }
+
+  const mismatch = info && info.uranusPaused != null && info.uranusPaused !== (mode === "shixinjie");
+  const pauseText =
+    info == null
+      ? ""
+      : info.uranusPaused == null
+        ? `Uranus 状态读不到（${info.uranusError || "未知"}）`
+        : (info.uranusPaused ? "Uranus：已暂停自动回复" : "Uranus：正常自动回复") + (mismatch ? `（和上面不一致，再点一下「${mode === "shixinjie" ? "拾心界" : "Uranus"}」就会对齐）` : "");
+
   return (
     <div className="card">
+      <style>{SXJ_CSS}</style>
       <FoldHead>拾心界（日记来源）</FoldHead>
-      <p className="faint" style={{ marginTop: 0 }}>
-        选「拾心界」后，Companion 不再从 Uranus 整理日记，改成每天按拾心界里的聊天、商城、行踪、番茄钟等记录，自己写一篇短日记和明天的日程（DDL Garden 照常读日程）。
-        想回到 iMessage，就切回「Uranus」并保存，原来的整理照旧，两边的数据都还在。
-      </p>
-      <Field label="日记来源">
-        <select value={mode} onChange={(e) => up(["diarySource"], e.target.value)}>
-          <option value="uranus">Uranus（iMessage 聊天）</option>
-          <option value="shixinjie">拾心界</option>
-        </select>
-      </Field>
 
-      <Field label="拾心界同步链接（在拾心界里粘贴一次）">
-        {link ? <input readOnly value={link} onFocus={(e) => e.target.select()} /> : <span className="meta">还没有生成</span>}
-      </Field>
-      <div className="row">
-        {link && (
-          <button type="button" className="pill solid" onClick={copy}>
-            复制链接
+      {/* ① 一键切换 */}
+      <div className="sxj-sec" style={{ marginTop: 4 }}>
+        <div className="sxj-h">现在用的是</div>
+        <div className="sxj-seg">
+          <button type="button" className={mode === "uranus" ? "on" : ""} disabled={busy === "mode"} onClick={() => switchTo("uranus")}>
+            Uranus<small>iMessage 聊天</small>
           </button>
-        )}
-        <button type="button" className={`pill${link ? "" : " solid"}`} disabled={busy === "tok"} onClick={makeToken}>
-          {link ? "重新生成" : "生成同步链接"}
-        </button>
-      </div>
-      <p className="meta">链接等于一把钥匙，别发给别人。拾心界收不到数据时，日志和状态会显示在这里。</p>
-
-      {info && (
-        <div className="profile" style={{ marginTop: 6 }}>
-          <div className="meta">
-            最近一次收到拾心界的数据：{info.state?.lastIngestAt ? new Date(info.state.lastIngestAt).toLocaleString("zh-CN") : "还没有"}
-            {info.state?.lastIngestAt ? `（新增 ${info.state.lastIngestCount} 条）` : ""}
-          </div>
-          {info.state?.lastError && <div className="err meta">上次写日记出错：{info.state.lastError}</div>}
-          {(info.days || []).slice(0, 7).map((d) => (
-            <div key={d.date} className="meta">
-              {d.date} · {d.events} 条记录 · {d.done ? "日记已写" : d.fail ? <span className="err">没写成（{d.fail.count} 次）</span> : "日记未写"}
-            </div>
-          ))}
-          <button type="button" className="link" onClick={peek}>
-            看看今天收到了什么
+          <button type="button" className={mode === "shixinjie" ? "on" : ""} disabled={busy === "mode"} onClick={() => switchTo("shixinjie")}>
+            拾心界<small>字卡聊天</small>
           </button>
-          {day && (
-            <pre className="meta" style={{ whiteSpace: "pre-wrap", maxHeight: 240, overflow: "auto" }}>
-              {day.lines.length ? day.lines.join("\n") : "今天还没有记录"}
-            </pre>
+        </div>
+        <p className="meta" style={{ marginTop: 8 }}>
+          点一下就生效，不用再保存。选拾心界：日记和明天的日程按拾心界的记录写，Uranus 自动暂停回复；选 Uranus：全部恢复原样。
+          {pauseText && (
+            <>
+              <br />
+              <span className={info?.uranusPaused == null || mismatch ? "sxj-bad" : ""}>{pauseText}</span>
+            </>
           )}
+        </p>
+      </div>
+
+      {/* ② 状态 */}
+      {info && (
+        <div className="sxj-sec">
+          <div className="sxj-h">状态</div>
+          <div className="sxj-box">
+            <div className="meta" style={{ margin: 0 }}>
+              最近收到拾心界的数据：{info.state?.lastIngestAt ? fmt(info.state.lastIngestAt) : "还没有"}
+            </div>
+            {info.state?.lastError && (
+              <div className="meta sxj-bad" style={{ margin: "6px 0 0" }}>
+                上次写日记出错：{info.state.lastError}
+              </div>
+            )}
+            {(info.days || []).length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                {(info.days || []).slice(0, 7).map((d) => (
+                  <div key={d.date} className="sxj-row">
+                    <span className="meta">
+                      {d.date.slice(5)} · {d.events} 条 ·{" "}
+                      {d.done ? <span className="sxj-ok">日记已写</span> : d.fail ? <span className="sxj-bad">没写成</span> : "还没写"}
+                    </span>
+                    <button type="button" className="sxj-mini" disabled={!!busy} onClick={() => run(d.date, !!d.done)}>
+                      {busy === "run:" + d.date ? "写日记中…" : d.done ? "重写" : d.fail ? "重试" : "现在写"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button type="button" className="link" style={{ marginTop: 6 }} onClick={peek}>
+              {day ? "收起" : "看看今天收到了什么"}
+            </button>
+            {day && <pre className="meta sxj-pre">{day.lines.length ? day.lines.join("\n") : "今天还没有记录"}</pre>}
+          </div>
         </div>
       )}
 
-      <div className="two">
-        <Field label="每天几点写日记">
+      {/* ③ 同步链接 */}
+      <div className="sxj-sec">
+        <div className="sxj-h">拾心界同步链接</div>
+        {link ? <input className="sxj-link" readOnly value={link} onFocus={(e) => e.target.select()} /> : <p className="meta">还没有生成</p>}
+        <div className="row" style={{ marginTop: 8, flexWrap: "wrap" }}>
+          {link && (
+            <button type="button" className="pill solid" onClick={copy}>
+              复制链接
+            </button>
+          )}
+          <button type="button" className={`pill${link ? "" : " solid"}`} disabled={busy === "tok"} onClick={makeToken}>
+            {link ? "重新生成" : "生成同步链接"}
+          </button>
+        </div>
+        <p className="meta">在拾心界「聊天设置 → 后台 → 同步到 Companion」里粘贴一次就行。链接等于钥匙，别发给别人。</p>
+      </div>
+
+      {/* ④ 写日记 */}
+      <div className="sxj-sec sxj-stack">
+        <div className="sxj-h">写日记</div>
+        <Field label="每天几点自动写">
           <input type="time" value={c.writeAt || "23:45"} onChange={(e) => set("writeAt", e.target.value)} />
         </Field>
-        <Field label="日记语言（留空 = 跟随下面的「输出语言」）">
+        <Field label="日记语言（留空 = 跟随「输出语言」）">
           <input value={c.language || ""} placeholder="English" onChange={(e) => set("language", e.target.value)} />
         </Field>
-      </div>
-      <div className="two">
-        <Field label="日记最少字数（英文按词）">
-          <input type="number" min="30" value={c.minWords ?? 120} onChange={(e) => set("minWords", Number(e.target.value))} />
+        <div className="two">
+          <Field label="最少字数">
+            <input type="number" min="30" value={c.minWords ?? 120} onChange={(e) => set("minWords", Number(e.target.value))} />
+          </Field>
+          <Field label="最多字数">
+            <input type="number" min="30" value={c.maxWords ?? 260} onChange={(e) => set("maxWords", Number(e.target.value))} />
+          </Field>
+        </div>
+        <Field label="用哪个模型写">
+          <select value={modelVal} onChange={(e) => pickModel(e.target.value)}>
+            <option value="">跟随「整理」的模型</option>
+            {profiles.length > 0 && (
+              <optgroup label="Companion「模型」里的">
+                {profiles.map((p) => (
+                  <option key={p.id} value={"p:" + p.id}>
+                    {p.name || p.model || "未命名"}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {providers.length > 0 && (
+              <optgroup label="Uranus「连接」里的">
+                {providers.map((p) => (
+                  <option key={p.id} value={"u:" + p.id}>
+                    {p.name?.trim() || p.id}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
         </Field>
-        <Field label="日记最多字数">
-          <input type="number" min="30" value={c.maxWords ?? 260} onChange={(e) => set("maxWords", Number(e.target.value))} />
-        </Field>
-      </div>
-      <Field label="写日记用的模型（不选就跟随「整理」那里选的模型）">
-        <select value={c.profileId || ""} onChange={(e) => set("profileId", e.target.value)}>
-          <option value="">跟随「整理」的模型</option>
-          {(s.modelProfiles || []).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name || p.model || "未命名"}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <label className="check">
-        <input type="checkbox" checked={c.mapSync !== false} onChange={(e) => set("mapSync", e.target.checked)} /> 拾心界的行踪同步到地图（新地点自动加上，再把他挪过去）
-      </label>
-
-      {!String(s.agent?.persona || "").trim() && <p className="err meta">下面「人设」卡片里的角色人设是空的，日记会不像他。可以点这个按钮从 Uranus 复制：</p>}
-      <button type="button" className="pill" disabled={busy === "persona"} onClick={copyPersona}>
-        {busy === "persona" ? "复制中…" : "从 Uranus 复制角色人设"}
-      </button>
-
-      <Field label="大前提（字卡回复的随机性；写日记时最先读到）">
-        <textarea rows={6} value={c.premise || ""} onChange={(e) => set("premise", e.target.value)} />
-      </Field>
-      <Field label="拾心界说明书（每种功能代表什么）">
-        <textarea rows={10} value={c.glossary || ""} onChange={(e) => set("glossary", e.target.value)} />
-      </Field>
-      <button
-        type="button"
-        className="link"
-        onClick={() => {
-          if (!window.confirm("把大前提和说明书都恢复成默认内容？")) return;
-          set("premise", info?.defaults?.premise || "");
-          set("glossary", info?.defaults?.glossary || "");
-        }}
-      >
-        恢复默认的大前提和说明书
-      </button>
-      <Field label="额外要求（可选，比如「日记里多写写她的学习」）">
-        <textarea rows={3} value={c.extra || ""} onChange={(e) => set("extra", e.target.value)} />
-      </Field>
-
-      <div className="row" style={{ flexWrap: "wrap", marginTop: 4 }}>
-        <button type="button" className="pill solid" disabled={!!busy} onClick={runNow}>
-          {busy === "run" ? "写日记中…" : "现在就写今天的日记"}
-        </button>
+        {c.source === "uranus" && c.uranusProviderId && (
+          <Field label="这个连接里的哪个模型">
+            <select value={c.model || ""} onChange={(e) => set("model", e.target.value)}>
+              <option value="">选一个…</option>
+              {(pickedProvider?.models || [])
+                .filter((m) => m?.model)
+                .map((m) => (
+                  <option key={m.model} value={m.model}>
+                    {m.alias?.trim() || m.model}
+                  </option>
+                ))}
+            </select>
+          </Field>
+        )}
         <label className="check">
-          <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> 重写（今天已经写过也重新写）
+          <input type="checkbox" checked={c.mapSync !== false} onChange={(e) => set("mapSync", e.target.checked)} /> 拾心界的行踪同步到地图
         </label>
+        <div>
+          {!String(s.agent?.persona || "").trim() && <p className="meta sxj-bad">「人设」卡片里的角色人设是空的，日记会不像他。</p>}
+          <button type="button" className="pill" disabled={busy === "persona"} onClick={copyPersona}>
+            {busy === "persona" ? "复制中…" : "从 Uranus 复制角色人设"}
+          </button>
+        </div>
+        <p className="meta">改了这一部分要点下面的「保存设置」。</p>
       </div>
-      <p className="meta" style={{ marginBottom: 0 }}>
-        平时不用点：到了上面的时间会自动写。写好或出错都会记在「动态」里。
-      </p>
+
+      {/* ⑤ 提示词（高级） */}
+      <div className="sxj-sec">
+        <button type="button" className="link" onClick={() => setAdv((v) => !v)}>
+          {adv ? "收起提示词设置" : "展开提示词设置"}
+        </button>
+        {adv && (
+          <div className="sxj-stack" style={{ marginTop: 10 }}>
+            <Field label="大前提（字卡回复的随机性；写日记时最先读到）">
+              <textarea rows={7} value={c.premise || ""} onChange={(e) => set("premise", e.target.value)} />
+            </Field>
+            <Field label="拾心界说明书（每种功能代表什么）">
+              <textarea rows={12} value={c.glossary || ""} onChange={(e) => set("glossary", e.target.value)} />
+            </Field>
+            <Field label="额外要求（可选）">
+              <textarea rows={3} value={c.extra || ""} placeholder="比如：日记里多写写她的学习" onChange={(e) => set("extra", e.target.value)} />
+            </Field>
+            <button
+              type="button"
+              className="link"
+              onClick={() => {
+                if (!window.confirm("把大前提和说明书都恢复成默认内容？")) return;
+                set("premise", info?.defaults?.premise || "");
+                set("glossary", info?.defaults?.glossary || "");
+              }}
+            >
+              恢复默认的大前提和说明书
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ⑥ 手动写今天 */}
+      <div className="sxj-sec">
+        <div className="row" style={{ flexWrap: "wrap", alignItems: "center" }}>
+          <button type="button" className="pill" disabled={!!busy} onClick={() => run(undefined, force)}>
+            {busy === "run:today" ? "写日记中…" : "现在就写今天的日记"}
+          </button>
+          <label className="check" style={{ margin: 0 }}>
+            <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> 已写过也重写
+          </label>
+        </div>
+        <p className="meta" style={{ marginBottom: 0 }}>
+          平时不用点，到点会自动写。注意：今天手动写过之后，到点就不会再自动写了。
+        </p>
+      </div>
     </div>
   );
 }
@@ -1108,7 +1232,7 @@ export function SettingsPage({ ctx }) {
 
       <OrganizerCard s={s} up={up} data={data} save={save} ctx={ctx} />
 
-      <ShixinjieCard s={s} up={up} save={save} ctx={ctx} />
+      <ShixinjieCard s={s} up={up} save={save} ctx={ctx} profiles={profiles} providers={providers} />
 
       <GardenCard ctx={ctx} />
 
